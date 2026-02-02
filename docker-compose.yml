@@ -6,7 +6,7 @@ services:
 
     volumes:
       # Datenbank persistent speichern
-      - ./instance:/app/instance
+      - ./pflegeplanung.db:/app/pflegeplanung.db
 
     environment:
       - FLASK_ENV=production
