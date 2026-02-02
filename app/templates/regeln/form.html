@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ 'Regel bearbeiten' if regel else 'Neue Regel' }} - Pflegeplanung
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('regeln.index') }}">Regeln</a>
+                </li>
+                <li class="breadcrumb-item active">
+                    {{ 'Bearbeiten' if regel else 'Neu' }}
+                </li>
+            </ol>
+        </nav>
+        <h1>
+            <i class="bi bi-sliders"></i>
+            {{ 'Regel bearbeiten' if regel else 'Neue Regel' }}
+        </h1>
+    </div>
+</div>
+
+<form method="POST" id="regel-form">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-gear"></i> Regelkonfiguration
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="name" class="form-label required">Name</label>
+                        <input type="text" class="form-control" id="name" name="name"
+                               value="{{ regel.name if regel else '' }}"
+                               required maxlength="100"
+                               placeholder="z.B. Max. 5 Arbeitstage hintereinander">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="typ" class="form-label required">Regeltyp</label>
+                        <select class="form-select" id="typ" name="typ" required
+                                onchange="updateParameter(this.value)">
+                            <option value="">Bitte wählen...</option>
+                            {% for typ_value, typ_info in regel_typen %}
+                            <option value="{{ typ_value }}"
+                                    {{ 'selected' if regel and regel.typ.value == typ_value else '' }}>
+                                {{ typ_info.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label required">Priorität</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="prioritaet"
+                                       id="prio1" value="1"
+                                       {{ 'checked' if not regel or regel.prioritaet == 1 else '' }}>
+                                <label class="form-check-label" for="prio1">
+                                    <span class="badge bg-danger">Hart</span>
+                                    <small class="text-muted">- muss eingehalten werden</small>
+                                </label>
+                            </div>
+                            <br>
+                            <div class="form-check form-check-inline mt-2">
+                                <input class="form-check-input" type="radio" name="prioritaet"
+                                       id="prio2" value="2"
+                                       {{ 'checked' if regel and regel.prioritaet == 2 else '' }}>
+                                <label class="form-check-label" for="prio2">
+                                    <span class="badge bg-warning text-dark">Weich</span>
+                                    <small class="text-muted">- sollte möglichst eingehalten werden</small>
+                                </label>
+                            </div>
+                            <br>
+                            <div class="form-check form-check-inline mt-2">
+                                <input class="form-check-input" type="radio" name="prioritaet"
+                                       id="prio3" value="3"
+                                       {{ 'checked' if regel and regel.prioritaet == 3 else '' }}>
+                                <label class="form-check-label" for="prio3">
+                                    <span class="badge bg-info">Optional</span>
+                                    <small class="text-muted">- nice to have</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="aktiv" name="aktiv"
+                                   {{ 'checked' if not regel or regel.aktiv else '' }}>
+                            <label class="form-check-label" for="aktiv">
+                                Regel ist aktiv
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-sliders2"></i> Parameter
+                </div>
+                <div class="card-body" id="parameter-container">
+                    <p class="text-muted" id="no-params-msg">
+                        Bitte wählen Sie zuerst einen Regeltyp aus.
+                    </p>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> Speichern
+                </button>
+                <a href="{{ url_for('regeln.index') }}" class="btn btn-secondary">
+                    Abbrechen
+                </a>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Regeltyp-Parameter-Definitionen
+    const regelTypParameter = {
+        {% for typ_value, typ_info in regel_typen %}
+        '{{ typ_value }}': {{ typ_info.parameter | tojson }},
+        {% endfor %}
+    };
+
+    // Dienste und Qualifikationen für Selects
+    const dienste = [
+        {% for d in dienste %}
+        {"id": {{ d.id }}, "name": "{{ d.name }}"}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    const qualifikationen = [
+        {% for q in qualifikationen %}
+        {"id": {{ q.id }}, "name": "{{ q.name }}"}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+
+    // Aktuelle Parameter (für Bearbeitung)
+    const currentParams = {{ (regel.parameter if regel else {}) | tojson }};
+
+    function updateParameter(regelTyp) {
+        const container = document.getElementById('parameter-container');
+        const noParamsMsg = document.getElementById('no-params-msg');
+
+        if (!regelTyp || !regelTypParameter[regelTyp]) {
+            container.innerHTML = '<p class="text-muted" id="no-params-msg">Bitte wählen Sie zuerst einen Regeltyp aus.</p>';
+            return;
+        }
+
+        const params = regelTypParameter[regelTyp];
+        container.innerHTML = '';
+
+        if (Object.keys(params).length === 0) {
+            container.innerHTML = '<p class="text-muted">Diese Regel benötigt keine zusätzlichen Parameter.</p>';
+            return;
+        }
+
+        for (const [key, config] of Object.entries(params)) {
+            const div = document.createElement('div');
+            div.className = 'mb-3';
+
+            const currentValue = currentParams[key] !== undefined ? currentParams[key] : (config.default || '');
+            let inputHtml = '';
+
+            switch (config.typ) {
+                case 'integer':
+                    inputHtml = `<input type="number" class="form-control" name="param_${key}"
+                                id="param_${key}" value="${currentValue}" required>`;
+                    break;
+                case 'date':
+                    inputHtml = `<input type="date" class="form-control" name="param_${key}"
+                                id="param_${key}" value="${currentValue}" required>`;
+                    break;
+                case 'dienst':
+                    inputHtml = `<select class="form-select" name="param_${key}" id="param_${key}" required>
+                                <option value="">Bitte wählen...</option>`;
+                    for (const d of dienste) {
+                        const selected = currentValue == d.id ? 'selected' : '';
+                        inputHtml += `<option value="${d.id}" ${selected}>${d.name}</option>`;
+                    }
+                    inputHtml += '</select>';
+                    break;
+                case 'qualifikation':
+                    inputHtml = `<select class="form-select" name="param_${key}" id="param_${key}" required>
+                                <option value="">Bitte wählen...</option>`;
+                    for (const q of qualifikationen) {
+                        const selected = currentValue == q.id ? 'selected' : '';
+                        inputHtml += `<option value="${q.id}" ${selected}>${q.name}</option>`;
+                    }
+                    inputHtml += '</select>';
+                    break;
+            }
+
+            div.innerHTML = `
+                <label for="param_${key}" class="form-label required">${config.label}</label>
+                ${inputHtml}
+            `;
+
+            container.appendChild(div);
+        }
+    }
+
+    // Initialize on page load if editing
+    document.addEventListener('DOMContentLoaded', function() {
+        const typSelect = document.getElementById('typ');
+        if (typSelect.value) {
+            updateParameter(typSelect.value);
+        }
+    });
+</script>
+{% endblock %}

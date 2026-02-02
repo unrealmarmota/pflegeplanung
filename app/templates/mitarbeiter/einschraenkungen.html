@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Dienst-Einschränkungen - {{ mitarbeiter.name }} - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('mitarbeiter.index') }}">Mitarbeiter</a>
+                </li>
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('mitarbeiter.edit', id=mitarbeiter.id) }}">{{ mitarbeiter.name }}</a>
+                </li>
+                <li class="breadcrumb-item active">Dienst-Einschränkungen</li>
+            </ol>
+        </nav>
+        <h1>
+            <i class="bi bi-calendar-x"></i>
+            Dienst-Einschränkungen: {{ mitarbeiter.name }}
+        </h1>
+        <p class="text-muted">
+            Hier kannst du festlegen, an welchen Tagen der Mitarbeiter nur bestimmte Dienste machen darf.
+            <br>
+            <strong>Beispiel:</strong> "{{ mitarbeiter.name }} darf am Wochenende nur Frühdienst machen."
+        </p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-list-check"></i> Aktive Einschränkungen
+            </div>
+            <div class="card-body">
+                {% if mitarbeiter.dienst_einschraenkungen %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Tag-Typ</th>
+                                <th>Nur Dienst</th>
+                                <th>Notiz</th>
+                                <th>Status</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in mitarbeiter.dienst_einschraenkungen %}
+                            <tr class="{{ 'table-secondary' if not e.aktiv }}">
+                                <td>
+                                    <i class="bi bi-calendar-{{ 'event' if 'WOCHENENDE' in e.tag_typ.value else 'day' }}"></i>
+                                    {{ tag_typ_namen[e.tag_typ] }}
+                                </td>
+                                <td>
+                                    <span class="badge" style="background-color: {{ e.nur_dienst.farbe }};">
+                                        {{ e.nur_dienst.kurzname }}
+                                    </span>
+                                    {{ e.nur_dienst.name }}
+                                </td>
+                                <td>
+                                    {% if e.notiz %}
+                                        <small class="text-muted">{{ e.notiz }}</small>
+                                    {% else %}
+                                        <small class="text-muted">-</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if e.aktiv %}
+                                        <span class="badge bg-success">Aktiv</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Inaktiv</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form action="{{ url_for('mitarbeiter.einschraenkung_toggle', id=mitarbeiter.id, einschraenkung_id=e.id) }}"
+                                          method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-{{ 'warning' if e.aktiv else 'success' }}"
+                                                title="{{ 'Deaktivieren' if e.aktiv else 'Aktivieren' }}">
+                                            <i class="bi bi-{{ 'pause' if e.aktiv else 'play' }}"></i>
+                                        </button>
+                                    </form>
+                                    <form action="{{ url_for('mitarbeiter.einschraenkung_delete', id=mitarbeiter.id, einschraenkung_id=e.id) }}"
+                                          method="POST" class="d-inline"
+                                          onsubmit="return confirm('Einschränkung wirklich löschen?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-info-circle"></i>
+                        Noch keine Einschränkungen definiert. {{ mitarbeiter.name }} kann an allen Tagen alle Dienste machen.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-plus-circle"></i> Neue Einschränkung
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('mitarbeiter.einschraenkung_create', id=mitarbeiter.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label for="tag_typ" class="form-label required">An welchen Tagen?</label>
+                        <select class="form-select" id="tag_typ" name="tag_typ" required>
+                            <option value="">-- Bitte wählen --</option>
+                            <optgroup label="Gruppiert">
+                                <option value="WOCHENENDE">Wochenende (Sa+So)</option>
+                                <option value="WOCHENTAG">Wochentag (Mo-Fr)</option>
+                            </optgroup>
+                            <optgroup label="Einzelne Tage">
+                                <option value="MONTAG">Montag</option>
+                                <option value="DIENSTAG">Dienstag</option>
+                                <option value="MITTWOCH">Mittwoch</option>
+                                <option value="DONNERSTAG">Donnerstag</option>
+                                <option value="FREITAG">Freitag</option>
+                                <option value="SAMSTAG">Samstag</option>
+                                <option value="SONNTAG">Sonntag</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="nur_dienst_id" class="form-label required">Nur dieser Dienst erlaubt</label>
+                        <select class="form-select" id="nur_dienst_id" name="nur_dienst_id" required>
+                            <option value="">-- Bitte wählen --</option>
+                            {% for d in dienste %}
+                            <option value="{{ d.id }}">{{ d.kurzname }} - {{ d.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Andere Dienste werden an diesen Tagen für {{ mitarbeiter.name }} verboten.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="notiz" class="form-label">Notiz (optional)</label>
+                        <input type="text" class="form-control" id="notiz" name="notiz"
+                               maxlength="200" placeholder="z.B. wegen Kinderbetreuung">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-plus-lg"></i> Einschränkung hinzufügen
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-question-circle"></i> Hinweise
+            </div>
+            <div class="card-body">
+                <p class="small mb-2">
+                    <strong>Wie funktioniert das?</strong>
+                </p>
+                <ul class="small mb-0">
+                    <li>Eine Einschränkung sagt: "An diesen Tagen darf NUR dieser Dienst gemacht werden."</li>
+                    <li>Andere Dienste werden automatisch verboten.</li>
+                    <li>Mehrere Einschränkungen für den gleichen Tag-Typ sind möglich (z.B. Früh ODER Spät am Wochenende).</li>
+                    <li>Deaktivierte Einschränkungen werden bei der Planung ignoriert.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <a href="{{ url_for('mitarbeiter.edit', id=mitarbeiter.id) }}" class="btn btn-secondary w-100">
+                <i class="bi bi-arrow-left"></i> Zurück zur Bearbeitung
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

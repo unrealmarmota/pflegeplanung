@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-speedometer2"></i> Dashboard</h1>
+        <p class="text-muted">Übersicht der Personalplanung</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Mitarbeiter</h6>
+                        <h2 class="card-title mb-0">{{ stats.mitarbeiter_count }}</h2>
+                    </div>
+                    <i class="bi bi-people fs-1 opacity-50"></i>
+                </div>
+                <small>{{ stats.mitarbeiter_aktiv }} aktiv</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Dienste</h6>
+                        <h2 class="card-title mb-0">{{ stats.dienste_count }}</h2>
+                    </div>
+                    <i class="bi bi-clock fs-1 opacity-50"></i>
+                </div>
+                <small>konfiguriert</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Regeln</h6>
+                        <h2 class="card-title mb-0">{{ stats.regeln_count }}</h2>
+                    </div>
+                    <i class="bi bi-sliders fs-1 opacity-50"></i>
+                </div>
+                <small>{{ stats.regeln_aktiv }} aktiv</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Konflikte</h6>
+                        <h2 class="card-title mb-0">{{ stats.konflikte_count }}</h2>
+                    </div>
+                    <i class="bi bi-exclamation-triangle fs-1 opacity-50"></i>
+                </div>
+                <small>im aktuellen Monat</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-calendar-week"></i> Aktuelle Woche</span>
+                <a href="{{ url_for('planung.kalender') }}" class="btn btn-sm btn-outline-primary">
+                    Vollständiger Dienstplan
+                </a>
+            </div>
+            <div class="card-body">
+                {% if wochenplan %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm">
+                        <thead>
+                            <tr>
+                                <th>Mitarbeiter</th>
+                                {% for tag in wochentage %}
+                                <th class="text-center {% if tag.ist_heute %}table-primary{% endif %}">
+                                    {{ tag.name }}<br>
+                                    <small>{{ tag.datum }}</small>
+                                </th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ma in wochenplan %}
+                            <tr>
+                                <td>{{ ma.name }}</td>
+                                {% for dienst in ma.dienste %}
+                                <td class="text-center">
+                                    {% if dienst %}
+                                    <span class="badge" style="background-color: {{ dienst.farbe }}">
+                                        {{ dienst.kurzname }}
+                                    </span>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center my-4">
+                    Noch keine Dienstpläne vorhanden.<br>
+                    <a href="{{ url_for('planung.kalender') }}">Jetzt planen</a>
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-lightning"></i> Schnellaktionen
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('planung.generieren') }}" class="btn btn-primary">
+                        <i class="bi bi-magic"></i> Plan automatisch generieren
+                    </a>
+                    <a href="{{ url_for('planung.stundenuebersicht') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-clock-history"></i> Stundenübersicht
+                    </a>
+                    <a href="{{ url_for('mitarbeiter.create') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-person-plus"></i> Mitarbeiter hinzufügen
+                    </a>
+                    <a href="{{ url_for('regeln.create') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-plus-circle"></i> Regel erstellen
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {% if konflikte %}
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <i class="bi bi-exclamation-triangle"></i> Aktuelle Konflikte
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for konflikt in konflikte[:5] %}
+                <li class="list-group-item">
+                    <strong>{{ konflikt.typ }}</strong><br>
+                    <small class="text-muted">{{ konflikt.beschreibung }}</small>
+                </li>
+                {% endfor %}
+            </ul>
+            {% if konflikte|length > 5 %}
+            <div class="card-footer">
+                <a href="{{ url_for('planung.konflikte') }}">Alle {{ konflikte|length }} Konflikte anzeigen</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

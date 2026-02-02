@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  pflegeplanung:
+    build: .
+    container_name: pflegeplanung
+    restart: unless-stopped
+
+    # Option A: Volume-Mount (Projektdaten auf Unraid-Share)
+    volumes:
+      - /mnt/user/appdata/pflegeplanung/app:/app/app:ro          # App-Code (read-only)
+      - /mnt/user/appdata/pflegeplanung/instance:/app/instance   # SQLite DB (read-write)
+      - /mnt/user/appdata/pflegeplanung/run.py:/app/run.py:ro
+      - /mnt/user/appdata/pflegeplanung/config.py:/app/config.py:ro
+
+    # Oder Option B: Alles im Image (nur DB extern)
+    # volumes:
+    #   - /mnt/user/appdata/pflegeplanung/instance:/app/instance
+
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=dein-geheimer-schluessel-hier-aendern
+
+    ports:
+      - "9500:5000"
+
+    # Für SWAG: statt ports das hier nutzen
+    # networks:
+    #   - swag_default
+    #
+    # networks:
+    #   swag_default:
+    #     external: true

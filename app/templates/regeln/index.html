@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Regeln - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-sliders"></i> Regeln</h1>
+        <p class="text-muted">Planungsregeln und Constraints</p>
+    </div>
+    <div class="col-auto">
+        <a href="{{ url_for('regeln.create') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Neue Regel
+        </a>
+    </div>
+</div>
+
+{% if regeln %}
+<div class="row">
+    {% for r in regeln %}
+    <div class="col-md-6 mb-3">
+        <div class="card regel-karte {% if not r.aktiv %}inaktiv{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    {% if r.prioritaet == 1 %}
+                        <span class="badge bg-danger me-2">Hart</span>
+                    {% elif r.prioritaet == 2 %}
+                        <span class="badge bg-warning text-dark me-2">Weich</span>
+                    {% else %}
+                        <span class="badge bg-info me-2">Optional</span>
+                    {% endif %}
+                    <strong>{{ r.name }}</strong>
+                </span>
+                <div class="form-check form-switch">
+                    <form action="{{ url_for('regeln.toggle', id=r.id) }}" method="POST" class="d-inline">
+                        <input class="form-check-input" type="checkbox"
+                               {{ 'checked' if r.aktiv else '' }}
+                               onchange="this.form.submit()"
+                               title="{{ 'Deaktivieren' if r.aktiv else 'Aktivieren' }}">
+                    </form>
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">
+                    <span class="badge bg-secondary">{{ r.get_typ_info().get('name', r.typ.value) }}</span>
+                </p>
+                <p class="text-muted small mb-2">
+                    {{ r.get_typ_info().get('beschreibung', '') }}
+                </p>
+
+                {% if r.parameter %}
+                <div class="small">
+                    <strong>Parameter:</strong>
+                    <ul class="mb-0 ps-3">
+                        {% for key, value in r.parameter.items() %}
+                        <li>{{ key }}: {{ value }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer bg-transparent">
+                <a href="{{ url_for('regeln.edit', id=r.id) }}"
+                   class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-pencil"></i> Bearbeiten
+                </a>
+                <form action="{{ url_for('regeln.delete', id=r.id) }}"
+                      method="POST" class="d-inline"
+                      onsubmit="return confirmDelete('Regel &quot;{{ r.name }}&quot; wirklich löschen?')">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-trash"></i> Löschen
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="mt-3">
+    <small class="text-muted">
+        <strong>Hart:</strong> Diese Regeln müssen zwingend eingehalten werden.<br>
+        <strong>Weich:</strong> Diese Regeln sollten möglichst eingehalten werden, können aber bei Bedarf verletzt werden.<br>
+        <strong>Optional:</strong> Nice-to-have, wird nur berücksichtigt wenn keine Konflikte entstehen.
+    </small>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> Noch keine Regeln vorhanden.
+    <a href="{{ url_for('regeln.create') }}">Erste Regel erstellen</a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-lightbulb"></i> Verfügbare Regeltypen
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <ul class="list-unstyled">
+                    <li class="mb-2">
+                        <i class="bi bi-calendar-range text-primary"></i>
+                        <strong>Max. aufeinanderfolgende Arbeitstage</strong><br>
+                        <small class="text-muted">z.B. max. 5 Tage am Stück</small>
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-hourglass text-primary"></i>
+                        <strong>Mindest-Ruhezeit</strong><br>
+                        <small class="text-muted">z.B. mind. 11 Stunden zwischen Diensten</small>
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-clock-history text-primary"></i>
+                        <strong>Max. Wochenstunden</strong><br>
+                        <small class="text-muted">z.B. max. 48 Stunden/Woche</small>
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-people text-primary"></i>
+                        <strong>Mindestbesetzung pro Dienst</strong><br>
+                        <small class="text-muted">z.B. mind. 3 Personen im Frühdienst</small>
+                    </li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <ul class="list-unstyled">
+                    <li class="mb-2">
+                        <i class="bi bi-calendar-week text-primary"></i>
+                        <strong>Wochenend-Rotation</strong><br>
+                        <small class="text-muted">z.B. max. 2 Wochenenden/Monat</small>
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-moon-stars text-primary"></i>
+                        <strong>Kein Frühdienst nach Nachtdienst</strong><br>
+                        <small class="text-muted">Verhindert ungünstige Schichtwechsel</small>
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-award text-primary"></i>
+                        <strong>Qualifikations-Pflicht</strong><br>
+                        <small class="text-muted">z.B. mind. 2 Examinierte pro Dienst</small>
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-calendar-x text-primary"></i>
+                        <strong>Urlaubs-Sperre</strong><br>
+                        <small class="text-muted">z.B. Weihnachten gesperrt</small>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ 'Qualifikation bearbeiten' if qualifikation else 'Neue Qualifikation' }} - Pflegeplanung
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('qualifikationen.index') }}">Qualifikationen</a>
+                </li>
+                <li class="breadcrumb-item active">
+                    {{ 'Bearbeiten' if qualifikation else 'Neu' }}
+                </li>
+            </ol>
+        </nav>
+        <h1>
+            <i class="bi bi-award"></i>
+            {{ 'Qualifikation bearbeiten' if qualifikation else 'Neue Qualifikation' }}
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="name" class="form-label required">Name</label>
+                        <input type="text" class="form-control" id="name" name="name"
+                               value="{{ qualifikation.name if qualifikation else '' }}"
+                               required maxlength="100"
+                               placeholder="z.B. Examinierte Pflegekraft">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="beschreibung" class="form-label">Beschreibung</label>
+                        <textarea class="form-control" id="beschreibung" name="beschreibung"
+                                  rows="3" placeholder="Optionale Beschreibung">{{ qualifikation.beschreibung if qualifikation else '' }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="farbe" class="form-label">Farbe</label>
+                        <div class="input-group">
+                            <input type="color" class="form-control form-control-color"
+                                   id="farbe" name="farbe"
+                                   value="{{ qualifikation.farbe if qualifikation else '#6c757d' }}">
+                            <span class="input-group-text" id="farbe-preview"
+                                  style="background-color: {{ qualifikation.farbe if qualifikation else '#6c757d' }}; width: 50px;">
+                            </span>
+                        </div>
+                        <div class="form-text">Farbe zur Kennzeichnung in der Übersicht</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="inkludiert_id" class="form-label">Inkludiert Qualifikation</label>
+                        <select class="form-select" id="inkludiert_id" name="inkludiert_id">
+                            <option value="">-- Keine --</option>
+                            {% for q in alle_qualifikationen %}
+                            <option value="{{ q.id }}"
+                                    {% if qualifikation and qualifikation.inkludiert_id == q.id %}selected{% endif %}>
+                                {{ q.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Diese Qualifikation schließt eine andere ein (z.B. Fachweiterbildung inkludiert Examinierte Pflegekraft)
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg"></i> Speichern
+                        </button>
+                        <a href="{{ url_for('qualifikationen.index') }}" class="btn btn-secondary">
+                            Abbrechen
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle"></i> Hinweise
+            </div>
+            <div class="card-body">
+                <p>Qualifikationen definieren die beruflichen Fähigkeiten Ihrer Mitarbeiter.</p>
+                <p><strong>Beispiele:</strong></p>
+                <ul>
+                    <li>Examinierte Pflegekraft</li>
+                    <li>Pflegehelferin</li>
+                    <li>Praxisanleiterin</li>
+                    <li>Wundmanagement</li>
+                    <li>Palliative Care</li>
+                </ul>
+                <p class="mb-0">
+                    <small class="text-muted">
+                        Qualifikationen können später bei der Dienstplanung berücksichtigt werden,
+                        um sicherzustellen, dass genügend qualifiziertes Personal eingeteilt wird.
+                    </small>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    initColorPicker('farbe');
+</script>
+{% endblock %}

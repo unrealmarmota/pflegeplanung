@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Freizeitausgleich {{ jahr }} - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('feiertage.index', jahr=jahr) }}">Feiertage</a></li>
+                <li class="breadcrumb-item active">Freizeitausgleich</li>
+            </ol>
+        </nav>
+        <h1><i class="bi bi-arrow-repeat"></i> Freizeitausgleich {{ jahr }}</h1>
+        <p class="text-muted">Übersicht über Feiertagsarbeit und Ausgleichsansprüche</p>
+    </div>
+    <div class="col-auto">
+        <form action="{{ url_for('feiertage.ausgleich_erstellen') }}" method="POST" class="d-inline">
+            <input type="hidden" name="jahr" value="{{ jahr }}">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-plus-lg"></i> Ausgleiche für Feiertagsdienste erstellen
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if offene_ausgleiche > 0 %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    <strong>{{ offene_ausgleiche }}</strong> offene Ausgleichsansprüche vorhanden.
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-table"></i> Feiertagsdienste und Ausgleich
+    </div>
+    {% if ausgleich_daten %}
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Feiertag</th>
+                    <th>Mitarbeiter</th>
+                    <th>Dienst</th>
+                    <th>Stunden</th>
+                    <th>Status</th>
+                    <th>Ausgleich am</th>
+                    <th>Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in ausgleich_daten %}
+                <tr>
+                    <td>
+                        <strong>{{ item.feiertag.name }}</strong><br>
+                        <small class="text-muted">{{ item.feiertag.datum.strftime('%d.%m.%Y') }}</small>
+                    </td>
+                    <td>{{ item.mitarbeiter.name }}</td>
+                    <td>
+                        <span class="badge" style="background-color: {{ item.dienst.farbe }};">
+                            {{ item.dienst.kurzname }}
+                        </span>
+                        {{ item.dienst.name }}
+                    </td>
+                    <td>{{ "%.1f"|format(item.stunden) }}h</td>
+                    <td>
+                        {% if item.ausgleich %}
+                            {% if item.ausgleich.status == 'offen' %}
+                                <span class="badge bg-warning text-dark">Offen</span>
+                            {% elif item.ausgleich.status == 'geplant' %}
+                                <span class="badge bg-info">Geplant</span>
+                            {% elif item.ausgleich.status == 'genommen' %}
+                                <span class="badge bg-success">Genommen</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-secondary">Nicht erfasst</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.ausgleich and item.ausgleich.ausgleich_am %}
+                            {{ item.ausgleich.ausgleich_am.strftime('%d.%m.%Y') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.ausgleich %}
+                            {% if item.ausgleich.status == 'offen' %}
+                                <form action="{{ url_for('feiertage.ausgleich_planen', id=item.ausgleich.id) }}" method="POST" class="d-inline">
+                                    <div class="input-group input-group-sm" style="width: 180px;">
+                                        <input type="date" name="ausgleich_am" class="form-control" required>
+                                        <button type="submit" class="btn btn-outline-primary" title="Planen">
+                                            <i class="bi bi-calendar-check"></i>
+                                        </button>
+                                    </div>
+                                </form>
+                            {% elif item.ausgleich.status == 'geplant' %}
+                                <form action="{{ url_for('feiertage.ausgleich_genommen', id=item.ausgleich.id) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Als genommen markieren">
+                                        <i class="bi bi-check-lg"></i> Genommen
+                                    </button>
+                                </form>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body">
+        <p class="text-muted mb-0">
+            Keine Feiertagsdienste gefunden. Entweder wurden keine Feiertage eingetragen oder es gibt keine Dienstpläne für diese Feiertage.
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="mt-4">
+    <div class="card">
+        <div class="card-header">
+            <i class="bi bi-info-circle"></i> Hinweise zum Freizeitausgleich
+        </div>
+        <div class="card-body">
+            <ul class="mb-0">
+                <li>Mitarbeiter haben für Arbeit an Feiertagen Anspruch auf Freizeitausgleich</li>
+                <li>Der Ausgleich entspricht der gearbeiteten Stundenzahl</li>
+                <li>Klicke auf "Ausgleiche erstellen", um automatisch Ansprüche für alle Feiertagsdienste zu generieren</li>
+                <li>Plane dann die Ausgleichstage und markiere sie als "genommen", wenn der Mitarbeiter frei hatte</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

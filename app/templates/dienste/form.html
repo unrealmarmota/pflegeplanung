@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ 'Dienst bearbeiten' if dienst else 'Neuer Dienst' }} - Pflegeplanung
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('dienste.index') }}">Dienste</a>
+                </li>
+                <li class="breadcrumb-item active">
+                    {{ 'Bearbeiten' if dienst else 'Neu' }}
+                </li>
+            </ol>
+        </nav>
+        <h1>
+            <i class="bi bi-clock"></i>
+            {{ 'Dienst bearbeiten' if dienst else 'Neuer Dienst' }}
+        </h1>
+    </div>
+</div>
+
+<form method="POST">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-gear"></i> Dienstdefinition
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label for="name" class="form-label required">Name</label>
+                            <input type="text" class="form-control" id="name" name="name"
+                                   value="{{ dienst.name if dienst else '' }}"
+                                   required maxlength="50"
+                                   placeholder="z.B. Frühdienst">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="kurzname" class="form-label required">Kurzname</label>
+                            <input type="text" class="form-control" id="kurzname" name="kurzname"
+                                   value="{{ dienst.kurzname if dienst else '' }}"
+                                   required maxlength="5"
+                                   placeholder="z.B. F">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="start_zeit" class="form-label required">Startzeit</label>
+                            <input type="time" class="form-control" id="start_zeit" name="start_zeit"
+                                   value="{{ dienst.start_zeit.strftime('%H:%M') if dienst else '' }}"
+                                   required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="ende_zeit" class="form-label required">Endzeit</label>
+                            <input type="time" class="form-control" id="ende_zeit" name="ende_zeit"
+                                   value="{{ dienst.ende_zeit.strftime('%H:%M') if dienst else '' }}"
+                                   required>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="min_besetzung" class="form-label">Mindestbesetzung</label>
+                            <input type="number" class="form-control" id="min_besetzung" name="min_besetzung"
+                                   value="{{ dienst.min_besetzung if dienst else '1' }}"
+                                   min="0" max="99">
+                            <div class="form-text">Minimum Personal für diesen Dienst</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="max_besetzung" class="form-label">Maximalbesetzung</label>
+                            <input type="number" class="form-control" id="max_besetzung" name="max_besetzung"
+                                   value="{{ dienst.max_besetzung if dienst and dienst.max_besetzung else '' }}"
+                                   min="0" max="99" placeholder="unbegrenzt">
+                            <div class="form-text">Maximum Personal (leer = unbegrenzt)</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="farbe" class="form-label">Farbe</label>
+                        <div class="input-group">
+                            <input type="color" class="form-control form-control-color"
+                                   id="farbe" name="farbe"
+                                   value="{{ dienst.farbe if dienst else '#0d6efd' }}">
+                            <span class="input-group-text" id="farbe-preview"
+                                  style="background-color: {{ dienst.farbe if dienst else '#0d6efd' }}; width: 100px;">
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-award"></i> Qualifikationsanforderungen
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">
+                        Legen Sie fest, welche Qualifikationen für diesen Dienst erforderlich sind
+                        und wie viele Mitarbeiter mindestens benötigt werden.
+                    </p>
+
+                    {% if qualifikationen %}
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Qualifikation</th>
+                                    <th style="width: 100px;" class="text-center" title="Nur MA mit dieser Qualifikation dürfen diesen Dienst übernehmen">
+                                        Erforderlich
+                                    </th>
+                                    <th style="width: 100px;" class="text-center">Mindest.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for q in qualifikationen %}
+                                {% set ns = namespace(min_val=0, erforderlich=false) %}
+                                {% if dienst %}
+                                    {% for dq in dienst.qualifikation_anforderungen %}
+                                        {% if dq.qualifikation_id == q.id %}
+                                            {% set ns.min_val = dq.min_anzahl %}
+                                            {% set ns.erforderlich = dq.erforderlich %}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                                <tr>
+                                    <td>
+                                        <span class="badge" style="background-color: {{ q.farbe }};">
+                                            {{ q.name }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <input type="checkbox" class="form-check-input"
+                                               name="qual_{{ q.id }}_erf"
+                                               value="1"
+                                               {{ 'checked' if ns.erforderlich else '' }}>
+                                    </td>
+                                    <td>
+                                        <input type="number" class="form-control form-control-sm"
+                                               name="qual_{{ q.id }}_min"
+                                               value="{{ ns.min_val }}"
+                                               min="0" max="99">
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Erforderlich</strong>: Nur Mitarbeiter mit dieser Qualifikation können den Dienst übernehmen.<br>
+                            <strong>Mindestanzahl</strong>: Wie viele mit dieser Qualifikation müssen mindestens eingeplant sein.
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">
+                            Noch keine Qualifikationen vorhanden.
+                            <a href="{{ url_for('qualifikationen.create') }}">Qualifikation erstellen</a>
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> Speichern
+                </button>
+                <a href="{{ url_for('dienste.index') }}" class="btn btn-secondary">
+                    Abbrechen
+                </a>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    initColorPicker('farbe');
+</script>
+{% endblock %}

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Konflikte {{ monat_name }} {{ jahr }} - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('planung.kalender', jahr=jahr, monat=monat) }}">Dienstplan</a>
+                </li>
+                <li class="breadcrumb-item active">Konflikte</li>
+            </ol>
+        </nav>
+        <h1><i class="bi bi-exclamation-triangle"></i> Konflikte - {{ monat_name }} {{ jahr }}</h1>
+    </div>
+</div>
+
+{% if konflikte %}
+<div class="row">
+    <div class="col-md-8">
+        {% for k in konflikte %}
+        <div class="card mb-3 konflikt-item {{ 'kritisch' if k.schwere == 'kritisch' else ('warnung' if k.schwere == 'warnung' else 'info') }}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5 class="card-title">
+                            {% if k.schwere == 'kritisch' %}
+                                <i class="bi bi-x-circle-fill text-danger"></i>
+                            {% elif k.schwere == 'warnung' %}
+                                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                            {% else %}
+                                <i class="bi bi-info-circle-fill text-info"></i>
+                            {% endif %}
+                            {{ k.typ }}
+                        </h5>
+                        <p class="card-text">{{ k.beschreibung }}</p>
+                        {% if k.details %}
+                        <p class="card-text small text-muted">
+                            {{ k.details }}
+                        </p>
+                        {% endif %}
+                    </div>
+                    <span class="badge bg-{{ 'danger' if k.schwere == 'kritisch' else ('warning text-dark' if k.schwere == 'warnung' else 'info') }}">
+                        {{ k.schwere | capitalize }}
+                    </span>
+                </div>
+                {% if k.datum %}
+                <p class="card-text small">
+                    <i class="bi bi-calendar"></i>
+                    {{ k.datum.strftime('%d.%m.%Y') if k.datum else '' }}
+                    {% if k.mitarbeiter %}
+                        | <i class="bi bi-person"></i> {{ k.mitarbeiter }}
+                    {% endif %}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-bar-chart"></i> Zusammenfassung
+            </div>
+            <div class="card-body">
+                {% set kritisch = konflikte | selectattr('schwere', 'equalto', 'kritisch') | list | length %}
+                {% set warnung = konflikte | selectattr('schwere', 'equalto', 'warnung') | list | length %}
+                {% set info = konflikte | selectattr('schwere', 'equalto', 'info') | list | length %}
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span><i class="bi bi-x-circle-fill text-danger"></i> Kritisch</span>
+                        <strong>{{ kritisch }}</strong>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-danger" style="width: {{ (kritisch / konflikte|length * 100) if konflikte else 0 }}%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span><i class="bi bi-exclamation-triangle-fill text-warning"></i> Warnungen</span>
+                        <strong>{{ warnung }}</strong>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-warning" style="width: {{ (warnung / konflikte|length * 100) if konflikte else 0 }}%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span><i class="bi bi-info-circle-fill text-info"></i> Hinweise</span>
+                        <strong>{{ info }}</strong>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-info" style="width: {{ (info / konflikte|length * 100) if konflikte else 0 }}%"></div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <p class="text-muted small mb-0">
+                    <strong>Kritisch:</strong> Müssen vor der Freigabe behoben werden.<br>
+                    <strong>Warnungen:</strong> Sollten überprüft werden.<br>
+                    <strong>Hinweise:</strong> Zur Information.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-success">
+    <i class="bi bi-check-circle"></i>
+    <strong>Keine Konflikte gefunden!</strong>
+    Der Dienstplan für {{ monat_name }} {{ jahr }} enthält keine erkannten Konflikte.
+</div>
+{% endif %}
+
+<div class="mt-3">
+    <a href="{{ url_for('planung.kalender', jahr=jahr, monat=monat) }}" class="btn btn-primary">
+        <i class="bi bi-calendar-week"></i> Zurück zum Dienstplan
+    </a>
+</div>
+{% endblock %}

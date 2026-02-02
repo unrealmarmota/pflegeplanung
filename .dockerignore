@@ -1,0 +1,33 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Tests
+tests/
+test_*.py
+
+# Instance (DB wird separat gemounted)
+instance/
+
+# Misc
+*.md
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+
+{% block title %}Dienstplan {{ monat_name }} {{ jahr }} - Pflegeplanung{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dienstplan-grid {
+        overflow-x: auto;
+    }
+    .dienstplan-table {
+        min-width: 100%;
+    }
+    .dienstplan-table th,
+    .dienstplan-table td {
+        text-align: center;
+        vertical-align: middle;
+        min-width: 45px;
+        padding: 0.4rem;
+        font-size: 0.85rem;
+    }
+    .dienstplan-table .ma-name {
+        text-align: left;
+        position: sticky;
+        left: 0;
+        background: white;
+        z-index: 1;
+        min-width: 150px;
+    }
+    .dienstplan-table .stunden-col {
+        text-align: right;
+        position: sticky;
+        right: 0;
+        background: #f8f9fa;
+        z-index: 1;
+        min-width: 80px;
+        font-size: 0.8rem;
+    }
+    .stunden-ok { color: #198754; }
+    .stunden-under { color: #0d6efd; }
+    .stunden-over { color: #dc3545; }
+    .dienstplan-table thead th {
+        position: sticky;
+        top: 0;
+        background: #f8f9fa;
+        z-index: 2;
+    }
+    .dienstplan-table thead th.ma-name {
+        z-index: 3;
+    }
+    .tag-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    .tag-header .tag-name {
+        font-weight: bold;
+    }
+    .tag-header .tag-datum {
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+    .wochenende {
+        background-color: #f8f9fa;
+    }
+    .heute {
+        background-color: #cfe2ff;
+    }
+    .dienst-cell {
+        cursor: pointer;
+        transition: background-color 0.1s;
+        position: relative;
+    }
+    .dienst-cell:hover {
+        background-color: #e9ecef;
+    }
+    .dienst-badge {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.4rem;
+    }
+    .wunsch-indicator {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        font-size: 0.6rem;
+    }
+    .ausschluss-indicator {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        font-size: 0.55rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col">
+        <h1><i class="bi bi-calendar-week"></i> Dienstplan</h1>
+    </div>
+    <div class="col-auto d-flex align-items-center gap-2">
+        <a href="{{ url_for('planung.kalender', jahr=vorheriger.year, monat=vorheriger.month) }}"
+           class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-left"></i>
+        </a>
+        <span class="fw-bold fs-5">{{ monat_name }} {{ jahr }}</span>
+        <a href="{{ url_for('planung.kalender', jahr=naechster.year, monat=naechster.month) }}"
+           class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+    <div class="col-auto">
+        <div class="btn-group">
+            <a href="{{ url_for('planung.generieren') }}?jahr={{ jahr }}&monat={{ monat }}"
+               class="btn btn-primary">
+                <i class="bi bi-magic"></i> Automatisch planen
+            </a>
+            <a href="{{ url_for('planung.api_export', format='pdf', jahr=jahr, monat=monat) }}"
+               class="btn btn-outline-secondary">
+                <i class="bi bi-file-pdf"></i> PDF
+            </a>
+            <a href="{{ url_for('planung.api_export', format='excel', jahr=jahr, monat=monat) }}"
+               class="btn btn-outline-secondary">
+                <i class="bi bi-file-excel"></i> Excel
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-2">
+        <div class="dienstplan-grid">
+            <table class="table table-bordered dienstplan-table mb-0">
+                <thead>
+                    <tr>
+                        <th class="ma-name">Mitarbeiter</th>
+                        {% for tag, wochentag in monatstage %}
+                            {% if tag != 0 %}
+                                {% set datum = (jahr, monat, tag) | join('-') %}
+                                {% set ist_wochenende = wochentag >= 5 %}
+                                {% set ist_heute = tag == heute.day and monat == heute.month and jahr == heute.year %}
+                                <th class="{% if ist_wochenende %}wochenende{% endif %} {% if ist_heute %}heute{% endif %}">
+                                    <div class="tag-header">
+                                        <span class="tag-name">{{ ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][wochentag] }}</span>
+                                        <span class="tag-datum">{{ tag }}</span>
+                                    </div>
+                                </th>
+                            {% endif %}
+                        {% endfor %}
+                        <th class="stunden-col">
+                            <div class="tag-header">
+                                <span class="tag-name">Std.</span>
+                                <span class="tag-datum">Plan</span>
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ma in mitarbeiter %}
+                    <tr>
+                        <td class="ma-name">
+                            <a href="{{ url_for('mitarbeiter.detail', id=ma.id) }}" class="text-decoration-none">
+                                {{ ma.name }}
+                            </a>
+                        </td>
+                        {% for tag, wochentag in monatstage %}
+                            {% if tag != 0 %}
+                                {% set ist_wochenende = wochentag >= 5 %}
+                                {% set ist_heute = tag == heute.day and monat == heute.month and jahr == heute.year %}
+
+                                <td class="dienst-cell {% if ist_wochenende %}wochenende{% endif %} {% if ist_heute %}heute{% endif %}"
+                                    data-mitarbeiter-id="{{ ma.id }}"
+                                    data-datum="{{ jahr }}-{{ '%02d' | format(monat) }}-{{ '%02d' | format(tag) }}"
+                                    onclick="openDienstModal(this)">
+
+                                    {% set ns = namespace(found_dp=none) %}
+                                    {% for (d, mid), dp_entry in plan_dict.items() %}
+                                        {% if d.day == tag and d.month == monat and d.year == jahr and mid == ma.id %}
+                                            {% set ns.found_dp = dp_entry %}
+                                        {% endif %}
+                                    {% endfor %}
+
+                                    {% if ns.found_dp %}
+                                        <span class="badge dienst-badge" style="background-color: {{ ns.found_dp.dienst.farbe }};">
+                                            {{ ns.found_dp.dienst.kurzname }}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+
+                                    {# Check for wish #}
+                                    {% for (d, mid), wunsch in wunsch_dict.items() %}
+                                        {% if d.day == tag and d.month == monat and d.year == jahr and mid == ma.id %}
+                                            <span class="wunsch-indicator text-{{ 'success' if wunsch.wunsch_typ.value == 'frei' else ('primary' if wunsch.wunsch_typ.value == 'dienst_wunsch' else 'danger') }}"
+                                                  title="Wunsch: {{ wunsch.wunsch_typ.value }}">
+                                                <i class="bi bi-star-fill"></i>
+                                            </span>
+                                        {% endif %}
+                                    {% endfor %}
+
+                                    {# Check for exclusions #}
+                                    {% set ns_ex = namespace(exclusions=[]) %}
+                                    {% for (d, mid), ex_list in ausschluss_dict.items() %}
+                                        {% if d.day == tag and d.month == monat and d.year == jahr and mid == ma.id %}
+                                            {% set ns_ex.exclusions = ex_list %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% if ns_ex.exclusions %}
+                                        <span class="ausschluss-indicator"
+                                              title="Ausgeschlossen: {% for ex in ns_ex.exclusions %}{{ ex.dienst.kurzname }}{% if not loop.last %}, {% endif %}{% endfor %}">
+                                            <i class="bi bi-slash-circle"></i>{{ ns_ex.exclusions|length }}
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            {% endif %}
+                        {% endfor %}
+
+                        {# Stunden-Übersicht #}
+                        {% set ma_stunden = stunden_dict.get(ma.id, {'geplant': 0, 'soll': 0, 'prozent': 0}) %}
+                        {% set diff = ma_stunden.geplant - ma_stunden.soll %}
+                        <td class="stunden-col">
+                            <span class="{% if diff > 2 %}stunden-over{% elif diff < -2 %}stunden-under{% else %}stunden-ok{% endif %}">
+                                {{ "%.1f"|format(ma_stunden.geplant) }}h
+                            </span>
+                            <br>
+                            <small class="text-muted" title="Soll: {{ "%.1f"|format(ma_stunden.soll) }}h">
+                                {{ ma_stunden.prozent|int }}%
+                            </small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col">
+        <div class="d-flex gap-3 flex-wrap">
+            <span class="text-muted">Legende:</span>
+            {% for d in dienste %}
+            <span>
+                <span class="badge" style="background-color: {{ d.farbe }};">{{ d.kurzname }}</span>
+                {{ d.name }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal for editing -->
+<div class="modal fade" id="dienstModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dienst bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-info" class="mb-3"></p>
+
+                <div class="mb-3">
+                    <label class="form-label">Dienst zuweisen</label>
+                    <div class="d-flex flex-wrap gap-2" id="dienst-buttons">
+                        <button type="button" class="btn btn-outline-secondary" data-dienst-id="">
+                            <i class="bi bi-x"></i> Kein Dienst
+                        </button>
+                        {% for d in dienste %}
+                        <button type="button" class="btn" style="background-color: {{ d.farbe }}; color: white;"
+                                data-dienst-id="{{ d.id }}">
+                            {{ d.kurzname }} - {{ d.name }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    <label class="form-label">Verfügbarkeit</label>
+                    <div class="d-flex flex-wrap gap-2" id="wunsch-buttons">
+                        <button type="button" class="btn btn-outline-secondary" data-wunsch="">
+                            <i class="bi bi-x"></i> Keine Einschränkung
+                        </button>
+                        <button type="button" class="btn btn-outline-success" data-wunsch="frei">
+                            <i class="bi bi-calendar-x"></i> Wunsch frei
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" data-wunsch="nicht_verfuegbar">
+                            <i class="bi bi-slash-circle"></i> Nicht verfügbar
+                        </button>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    <label class="form-label">Dienste ausschließen <small class="text-muted">(Mehrfachauswahl möglich)</small></label>
+                    <div class="d-flex flex-wrap gap-2" id="ausschluss-buttons">
+                        {% for d in dienste %}
+                        <button type="button" class="btn btn-outline-secondary ausschluss-btn"
+                                data-dienst-id="{{ d.id }}" data-dienst-name="{{ d.name }}">
+                            <i class="bi bi-x-circle"></i> Kein {{ d.kurzname }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <div id="ausschluss-status" class="mt-2 small text-muted"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentCell = null;
+    const dienstModal = new bootstrap.Modal(document.getElementById('dienstModal'));
+
+    function openDienstModal(cell) {
+        currentCell = cell;
+        const mitarbeiterId = cell.dataset.mitarbeiterId;
+        const datum = cell.dataset.datum;
+
+        // Find employee name
+        const maName = cell.closest('tr').querySelector('.ma-name').textContent.trim();
+
+        document.getElementById('modal-info').textContent =
+            `${maName} am ${new Date(datum).toLocaleDateString('de-DE', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'})}`;
+
+        dienstModal.show();
+    }
+
+    // Dienst buttons
+    document.querySelectorAll('#dienst-buttons button').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const dienstId = this.dataset.dienstId;
+            const mitarbeiterId = currentCell.dataset.mitarbeiterId;
+            const datum = currentCell.dataset.datum;
+
+            try {
+                const response = await fetch('/planung/api/eintrag', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        mitarbeiter_id: parseInt(mitarbeiterId),
+                        datum: datum,
+                        dienst_id: dienstId ? parseInt(dienstId) : null
+                    })
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Fehler beim Speichern');
+                }
+            } catch (error) {
+                alert('Fehler: ' + error.message);
+            }
+        });
+    });
+
+    // Wunsch buttons (frei, nicht verfügbar)
+    document.querySelectorAll('#wunsch-buttons button').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const wunschTyp = this.dataset.wunsch;
+            const mitarbeiterId = currentCell.dataset.mitarbeiterId;
+            const datum = currentCell.dataset.datum;
+
+            try {
+                const response = await fetch('/planung/api/wunsch', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        mitarbeiter_id: parseInt(mitarbeiterId),
+                        datum: datum,
+                        wunsch_typ: wunschTyp || null
+                    })
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Fehler beim Speichern');
+                }
+            } catch (error) {
+                alert('Fehler: ' + error.message);
+            }
+        });
+    });
+
+    // Dienst-Ausschluss buttons (toggle)
+    document.querySelectorAll('.ausschluss-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const dienstId = this.dataset.dienstId;
+            const dienstName = this.dataset.dienstName;
+            const mitarbeiterId = currentCell.dataset.mitarbeiterId;
+            const datum = currentCell.dataset.datum;
+            const isActive = this.classList.contains('btn-danger');
+
+            try {
+                const response = await fetch('/planung/api/ausschluss', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        mitarbeiter_id: parseInt(mitarbeiterId),
+                        datum: datum,
+                        dienst_id: parseInt(dienstId),
+                        aktiv: !isActive
+                    })
+                });
+
+                if (response.ok) {
+                    // Toggle button state visually
+                    if (isActive) {
+                        this.classList.remove('btn-danger');
+                        this.classList.add('btn-outline-secondary');
+                    } else {
+                        this.classList.remove('btn-outline-secondary');
+                        this.classList.add('btn-danger');
+                    }
+                    updateAusschlussStatus();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Fehler beim Speichern');
+                }
+            } catch (error) {
+                alert('Fehler: ' + error.message);
+            }
+        });
+    });
+
+    function updateAusschlussStatus() {
+        const activeButtons = document.querySelectorAll('.ausschluss-btn.btn-danger');
+        const statusEl = document.getElementById('ausschluss-status');
+        if (activeButtons.length > 0) {
+            const names = Array.from(activeButtons).map(b => b.dataset.dienstName);
+            statusEl.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Ausgeschlossen: ${names.join(', ')}</span>`;
+        } else {
+            statusEl.textContent = '';
+        }
+    }
+
+    // Reset exclusion buttons when opening modal
+    const originalOpenModal = openDienstModal;
+    openDienstModal = async function(cell) {
+        originalOpenModal(cell);
+
+        // Reset all exclusion buttons
+        document.querySelectorAll('.ausschluss-btn').forEach(btn => {
+            btn.classList.remove('btn-danger');
+            btn.classList.add('btn-outline-secondary');
+        });
+
+        // Load current exclusions for this cell
+        const mitarbeiterId = cell.dataset.mitarbeiterId;
+        const datum = cell.dataset.datum;
+
+        try {
+            const response = await fetch(`/planung/api/ausschluss?mitarbeiter_id=${mitarbeiterId}&datum=${datum}`);
+            if (response.ok) {
+                const data = await response.json();
+                data.ausschluesse.forEach(dienstId => {
+                    const btn = document.querySelector(`.ausschluss-btn[data-dienst-id="${dienstId}"]`);
+                    if (btn) {
+                        btn.classList.remove('btn-outline-secondary');
+                        btn.classList.add('btn-danger');
+                    }
+                });
+                updateAusschlussStatus();
+            }
+        } catch (error) {
+            console.error('Fehler beim Laden der Ausschlüsse:', error);
+        }
+    };
+</script>
+{% endblock %}

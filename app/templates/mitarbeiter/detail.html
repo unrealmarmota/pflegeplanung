@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}{{ mitarbeiter.name }} - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('mitarbeiter.index') }}">Mitarbeiter</a>
+                </li>
+                <li class="breadcrumb-item active">{{ mitarbeiter.name }}</li>
+            </ol>
+        </nav>
+        <h1>
+            <i class="bi bi-person"></i> {{ mitarbeiter.name }}
+            {% if not mitarbeiter.aktiv %}
+                <span class="badge bg-secondary fs-6">Inaktiv</span>
+            {% endif %}
+        </h1>
+    </div>
+    <div class="col-auto">
+        <a href="{{ url_for('mitarbeiter.edit', id=mitarbeiter.id) }}" class="btn btn-primary">
+            <i class="bi bi-pencil"></i> Bearbeiten
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-person-badge"></i> Stammdaten
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th style="width: 150px;">Personalnummer</th>
+                        <td>{{ mitarbeiter.personalnummer }}</td>
+                    </tr>
+                    <tr>
+                        <th>E-Mail</th>
+                        <td>
+                            {% if mitarbeiter.email %}
+                                <a href="mailto:{{ mitarbeiter.email }}">{{ mitarbeiter.email }}</a>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Telefon</th>
+                        <td>
+                            {% if mitarbeiter.telefon %}
+                                <a href="tel:{{ mitarbeiter.telefon }}">{{ mitarbeiter.telefon }}</a>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Eintrittsdatum</th>
+                        <td>
+                            {% if mitarbeiter.eintrittsdatum %}
+                                {{ mitarbeiter.eintrittsdatum.strftime('%d.%m.%Y') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Stellenanteil</th>
+                        <td>{{ mitarbeiter.stellenanteil|int }}%</td>
+                    </tr>
+                    <tr>
+                        <th>Wochenstunden</th>
+                        <td>{{ "%.1f"|format(mitarbeiter.arbeitsstunden_woche) }} Std.</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-award"></i> Qualifikationen
+            </div>
+            <div class="card-body">
+                {% if mitarbeiter.qualifikationen %}
+                    {% for mq in mitarbeiter.qualifikationen %}
+                    <div class="mb-2">
+                        <span class="badge" style="background-color: {{ mq.qualifikation.farbe }}; font-size: 1em;">
+                            {{ mq.qualifikation.name }}
+                        </span>
+                        {% if not mq.ist_gueltig() %}
+                            <span class="badge bg-danger">Abgelaufen</span>
+                        {% endif %}
+                        <br>
+                        <small class="text-muted">
+                            Erworben: {{ mq.erworben_am.strftime('%d.%m.%Y') }}
+                            {% if mq.gueltig_bis %}
+                                | Gültig bis: {{ mq.gueltig_bis.strftime('%d.%m.%Y') }}
+                            {% endif %}
+                        </small>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted mb-0">Keine Qualifikationen zugewiesen.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-calendar-week"></i> Aktuelle Dienste
+            </div>
+            <div class="card-body">
+                {% if mitarbeiter.dienstplaene %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Datum</th>
+                                    <th>Dienst</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for dp in mitarbeiter.dienstplaene|sort(attribute='datum', reverse=True) %}
+                                {% if loop.index <= 10 %}
+                                <tr>
+                                    <td>{{ dp.datum.strftime('%d.%m.%Y (%A)') }}</td>
+                                    <td>
+                                        <span class="badge" style="background-color: {{ dp.dienst.farbe }};">
+                                            {{ dp.dienst.name }}
+                                        </span>
+                                    </td>
+                                    <td>{{ dp.status.value }}</td>
+                                </tr>
+                                {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0">Noch keine Dienste geplant.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

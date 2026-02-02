@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Stundenübersicht {{ monat_name }} {{ jahr }} - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-clock-history"></i> Stundenübersicht</h1>
+        <p class="text-muted">Soll/Ist-Vergleich für {{ monat_name }} {{ jahr }}</p>
+    </div>
+    <div class="col-auto d-flex align-items-center gap-2">
+        <a href="{{ url_for('planung.stundenuebersicht', jahr=vorheriger.year, monat=vorheriger.month) }}"
+           class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-left"></i>
+        </a>
+        <span class="fw-bold">{{ monat_name }} {{ jahr }}</span>
+        <a href="{{ url_for('planung.stundenuebersicht', jahr=naechster.year, monat=naechster.month) }}"
+           class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+</div>
+
+<!-- Zusammenfassung -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Soll (Gesamt)</h5>
+                <h2 class="mb-0">{{ gesamt_soll }} h</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Ist (Geplant)</h5>
+                <h2 class="mb-0">{{ gesamt_ist }} h</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center {% if gesamt_differenz > 0 %}border-warning{% elif gesamt_differenz < 0 %}border-danger{% else %}border-success{% endif %}">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Differenz</h5>
+                <h2 class="mb-0 {% if gesamt_differenz > 0 %}text-warning{% elif gesamt_differenz < 0 %}text-danger{% else %}text-success{% endif %}">
+                    {{ '+' if gesamt_differenz > 0 else '' }}{{ gesamt_differenz }} h
+                </h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sortierung -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row align-items-center">
+            <div class="col-auto">
+                <i class="bi bi-sort-down"></i> Sortierung:
+            </div>
+            <div class="col-auto">
+                <div class="btn-group btn-group-sm">
+                    <a href="{{ url_for('planung.stundenuebersicht', jahr=jahr, monat=monat, sort='name') }}"
+                       class="btn btn-{{ 'primary' if sortierung == 'name' else 'outline-secondary' }}">Name</a>
+                    <a href="{{ url_for('planung.stundenuebersicht', jahr=jahr, monat=monat, sort='differenz') }}"
+                       class="btn btn-{{ 'primary' if sortierung == 'differenz' else 'outline-secondary' }}">Überstunden</a>
+                    <a href="{{ url_for('planung.stundenuebersicht', jahr=jahr, monat=monat, sort='differenz_asc') }}"
+                       class="btn btn-{{ 'primary' if sortierung == 'differenz_asc' else 'outline-secondary' }}">Unterstunden</a>
+                    <a href="{{ url_for('planung.stundenuebersicht', jahr=jahr, monat=monat, sort='prozent') }}"
+                       class="btn btn-{{ 'primary' if sortierung == 'prozent' else 'outline-secondary' }}">Auslastung %</a>
+                </div>
+            </div>
+            <div class="col-auto ms-auto">
+                <a href="{{ url_for('planung.kalender', jahr=jahr, monat=monat) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-calendar"></i> Zum Dienstplan
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailtabelle -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Mitarbeiter</th>
+                    <th class="text-center">Stelle</th>
+                    <th class="text-end">Soll</th>
+                    <th class="text-end">Ist</th>
+                    <th class="text-end">Differenz</th>
+                    <th class="text-center" style="width: 150px;">Auslastung</th>
+                    <th>Dienste</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in uebersicht %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('mitarbeiter.detail', id=row.mitarbeiter.id) }}" class="text-decoration-none">
+                            <strong>{{ row.mitarbeiter.name }}</strong>
+                        </a>
+                        <br>
+                        <small class="text-muted">{{ row.mitarbeiter.personalnummer }}</small>
+                    </td>
+                    <td class="text-center">
+                        {{ row.mitarbeiter.stellenanteil|int }}%
+                        <br>
+                        <small class="text-muted">({{ row.mitarbeiter.arbeitsstunden_woche|round(1) }}h/Wo)</small>
+                    </td>
+                    <td class="text-end">{{ row.soll }} h</td>
+                    <td class="text-end">{{ row.ist }} h</td>
+                    <td class="text-end">
+                        <span class="{% if row.differenz > 2 %}text-warning fw-bold{% elif row.differenz < -2 %}text-danger fw-bold{% else %}text-success{% endif %}">
+                            {{ '+' if row.differenz > 0 else '' }}{{ row.differenz }} h
+                        </span>
+                    </td>
+                    <td>
+                        <div class="progress" style="height: 20px;">
+                            {% set prozent_capped = [row.prozent, 100]|min %}
+                            {% set bar_class = 'bg-success' if row.prozent >= 95 and row.prozent <= 105 else ('bg-warning' if row.prozent > 105 else 'bg-danger') %}
+                            <div class="progress-bar {{ bar_class }}"
+                                 role="progressbar"
+                                 style="width: {{ prozent_capped }}%"
+                                 aria-valuenow="{{ row.prozent }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                {{ row.prozent|round(0)|int }}%
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        {% for d in dienste %}
+                            {% if d.kurzname in row.dienste %}
+                            <span class="badge" style="background-color: {{ d.farbe }};" title="{{ d.name }}">
+                                {{ d.kurzname }}: {{ row.dienste[d.kurzname] }}
+                            </span>
+                            {% endif %}
+                        {% endfor %}
+                        {% if row.arbeitstage == 0 %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                        <br>
+                        <small class="text-muted">{{ row.arbeitstage }} Tage</small>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light">
+                <tr class="fw-bold">
+                    <td>Gesamt ({{ uebersicht|length }} MA)</td>
+                    <td></td>
+                    <td class="text-end">{{ gesamt_soll }} h</td>
+                    <td class="text-end">{{ gesamt_ist }} h</td>
+                    <td class="text-end">
+                        <span class="{% if gesamt_differenz > 0 %}text-warning{% elif gesamt_differenz < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ '+' if gesamt_differenz > 0 else '' }}{{ gesamt_differenz }} h
+                        </span>
+                    </td>
+                    <td>
+                        {% set gesamt_prozent = (gesamt_ist / gesamt_soll * 100) if gesamt_soll > 0 else 0 %}
+                        {{ gesamt_prozent|round(1) }}%
+                    </td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<!-- Legende -->
+<div class="card mt-3">
+    <div class="card-body py-2">
+        <small class="text-muted">
+            <i class="bi bi-info-circle"></i>
+            <strong>Legende:</strong>
+            <span class="text-success">Grün</span> = 95-105% Auslastung |
+            <span class="text-warning">Gelb</span> = > 105% (Überstunden) |
+            <span class="text-danger">Rot</span> = < 95% (Unterstunden)
+        </small>
+    </div>
+</div>
+{% endblock %}

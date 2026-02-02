@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Feiertage {{ jahr }} - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-calendar-heart"></i> Feiertage {{ jahr }}</h1>
+        <p class="text-muted">Verwaltung der Feiertage für die Dienstplanung</p>
+    </div>
+    <div class="col-auto d-flex align-items-center gap-2">
+        <a href="{{ url_for('feiertage.index', jahr=jahr-1) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-left"></i> {{ jahr-1 }}
+        </a>
+        <span class="fw-bold">{{ jahr }}</span>
+        <a href="{{ url_for('feiertage.index', jahr=jahr+1) }}" class="btn btn-outline-secondary">
+            {{ jahr+1 }} <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+    <div class="col-auto">
+        <div class="btn-group">
+            <a href="{{ url_for('feiertage.init_jahr', jahr=jahr) }}" class="btn btn-outline-primary">
+                <i class="bi bi-magic"></i> Deutsche Feiertage laden
+            </a>
+            <a href="{{ url_for('feiertage.create') }}" class="btn btn-primary">
+                <i class="bi bi-plus-lg"></i> Neu
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-list"></i> Feiertage {{ jahr }}
+            </div>
+            {% if feiertage %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Wochentag</th>
+                            <th>Name</th>
+                            <th style="width: 100px;">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ft in feiertage %}
+                        <tr>
+                            <td>{{ ft.datum.strftime('%d.%m.%Y') }}</td>
+                            <td>{{ ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][ft.datum.weekday()] }}</td>
+                            <td><strong>{{ ft.name }}</strong></td>
+                            <td>
+                                <form action="{{ url_for('feiertage.delete', id=ft.id) }}" method="POST" class="d-inline"
+                                      onsubmit="return confirm('Feiertag wirklich löschen?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body">
+                <p class="text-muted mb-0">
+                    Keine Feiertage für {{ jahr }} eingetragen.
+                    <a href="{{ url_for('feiertage.init_jahr', jahr=jahr) }}">Deutsche Feiertage automatisch laden</a>
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle"></i> Freizeitausgleich
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">
+                    Mitarbeiter, die an Feiertagen arbeiten, haben Anspruch auf Freizeitausgleich.
+                </p>
+                <a href="{{ url_for('feiertage.ausgleich_uebersicht', jahr=jahr) }}" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-arrow-repeat"></i> Ausgleich verwalten
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

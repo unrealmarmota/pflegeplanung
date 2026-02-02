@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Qualifikationen - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-award"></i> Qualifikationen</h1>
+        <p class="text-muted">Verwaltung der Berufsqualifikationen</p>
+    </div>
+    <div class="col-auto">
+        <a href="{{ url_for('qualifikationen.create') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Neue Qualifikation
+        </a>
+    </div>
+</div>
+
+{% if qualifikationen %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th style="width: 40px;">Farbe</th>
+                    <th>Name</th>
+                    <th>Inkludiert</th>
+                    <th>Beschreibung</th>
+                    <th>Mitarbeiter</th>
+                    <th style="width: 120px;">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for q in qualifikationen %}
+                <tr>
+                    <td>
+                        <span class="d-inline-block rounded"
+                              style="width: 24px; height: 24px; background-color: {{ q.farbe }};">
+                        </span>
+                    </td>
+                    <td>
+                        <strong>{{ q.name }}</strong>
+                    </td>
+                    <td>
+                        {% if q.inkludiert %}
+                        <span class="badge" style="background-color: {{ q.inkludiert.farbe }};">
+                            {{ q.inkludiert.name }}
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>{{ q.beschreibung or '-' }}</td>
+                    <td>
+                        <span class="badge bg-secondary">{{ q.mitarbeiter|length }}</span>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('qualifikationen.edit', id=q.id) }}"
+                           class="btn btn-sm btn-outline-primary" title="Bearbeiten">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <form action="{{ url_for('qualifikationen.delete', id=q.id) }}"
+                              method="POST" class="d-inline"
+                              onsubmit="return confirmDelete('Qualifikation &quot;{{ q.name }}&quot; wirklich löschen?')">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> Noch keine Qualifikationen vorhanden.
+    <a href="{{ url_for('qualifikationen.create') }}">Erste Qualifikation erstellen</a>
+</div>
+{% endif %}
+{% endblock %}

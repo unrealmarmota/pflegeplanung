@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ 'Mitarbeiter bearbeiten' if mitarbeiter else 'Neuer Mitarbeiter' }} - Pflegeplanung
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('mitarbeiter.index') }}">Mitarbeiter</a>
+                </li>
+                <li class="breadcrumb-item active">
+                    {{ 'Bearbeiten' if mitarbeiter else 'Neu' }}
+                </li>
+            </ol>
+        </nav>
+        <h1>
+            <i class="bi bi-person"></i>
+            {{ 'Mitarbeiter bearbeiten' if mitarbeiter else 'Neuer Mitarbeiter' }}
+        </h1>
+    </div>
+</div>
+
+<form method="POST">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-person-badge"></i> Stammdaten
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="name" class="form-label required">Name</label>
+                        <input type="text" class="form-control" id="name" name="name"
+                               value="{{ mitarbeiter.name if mitarbeiter else '' }}"
+                               required maxlength="100"
+                               placeholder="Vor- und Nachname">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="personalnummer" class="form-label required">Personalnummer</label>
+                        <input type="text" class="form-control" id="personalnummer" name="personalnummer"
+                               value="{{ mitarbeiter.personalnummer if mitarbeiter else '' }}"
+                               required maxlength="20"
+                               placeholder="z.B. P001">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="email" class="form-label">E-Mail</label>
+                            <input type="email" class="form-control" id="email" name="email"
+                                   value="{{ mitarbeiter.email if mitarbeiter and mitarbeiter.email else '' }}"
+                                   placeholder="name@beispiel.de">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="telefon" class="form-label">Telefon</label>
+                            <input type="tel" class="form-control" id="telefon" name="telefon"
+                                   value="{{ mitarbeiter.telefon if mitarbeiter and mitarbeiter.telefon else '' }}"
+                                   placeholder="+49 123 456789">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="eintrittsdatum" class="form-label">Eintrittsdatum</label>
+                        <input type="date" class="form-control" id="eintrittsdatum" name="eintrittsdatum"
+                               value="{{ mitarbeiter.eintrittsdatum.strftime('%Y-%m-%d') if mitarbeiter and mitarbeiter.eintrittsdatum else '' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="stellenanteil" class="form-label">
+                            Stellenanteil: <strong id="stellenanteil_display">{{ mitarbeiter.stellenanteil|default(100)|int }}%</strong>
+                        </label>
+                        <input type="range" class="form-range" id="stellenanteil" name="stellenanteil"
+                               min="10" max="100" step="5"
+                               value="{{ mitarbeiter.stellenanteil|default(100)|int }}"
+                               oninput="updateStundenAnzeige(this.value)">
+                        <div class="d-flex justify-content-between text-muted small">
+                            <span>10%</span>
+                            <span>50%</span>
+                            <span>100%</span>
+                        </div>
+                        <div class="form-text">
+                            Entspricht <strong id="stunden_display">{{ "%.1f"|format(basis_wochenstunden * (mitarbeiter.stellenanteil|default(100)) / 100) }}</strong> Wochenstunden
+                            (Basis: {{ basis_wochenstunden }} Std.)
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="aktiv" name="aktiv"
+                                   {{ 'checked' if not mitarbeiter or mitarbeiter.aktiv else '' }}>
+                            <label class="form-check-label" for="aktiv">
+                                Mitarbeiter ist aktiv
+                            </label>
+                        </div>
+                        <div class="form-text">Inaktive Mitarbeiter werden bei der Planung nicht berücksichtigt.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-award"></i> Qualifikationen
+                </div>
+                <div class="card-body">
+                    {% if qualifikationen %}
+                        {% set mitarbeiter_qual_ids = mitarbeiter.qualifikationen|map(attribute='qualifikation_id')|list if mitarbeiter else [] %}
+                        {% for q in qualifikationen %}
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox"
+                                   id="qual_{{ q.id }}" name="qualifikationen" value="{{ q.id }}"
+                                   {{ 'checked' if q.id in mitarbeiter_qual_ids else '' }}>
+                            <label class="form-check-label" for="qual_{{ q.id }}">
+                                <span class="badge" style="background-color: {{ q.farbe }};">
+                                    {{ q.name }}
+                                </span>
+                                {% if q.beschreibung %}
+                                <small class="text-muted d-block">{{ q.beschreibung }}</small>
+                                {% endif %}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted mb-0">
+                            Noch keine Qualifikationen vorhanden.
+                            <a href="{{ url_for('qualifikationen.create') }}">Qualifikation erstellen</a>
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if mitarbeiter %}
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>
+                        <i class="bi bi-calendar-x"></i> Dienst-Einschränkungen
+                        <small class="text-muted">(Hart)</small>
+                    </span>
+                    <a href="{{ url_for('mitarbeiter.einschraenkungen', id=mitarbeiter.id) }}"
+                       class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-pencil"></i> Verwalten
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if mitarbeiter.dienst_einschraenkungen %}
+                        <ul class="list-unstyled mb-0">
+                            {% for e in mitarbeiter.dienst_einschraenkungen if e.aktiv %}
+                            <li>
+                                <i class="bi bi-check-circle text-success"></i>
+                                <strong>{{ e.tag_typ.value|replace('_', ' ')|title }}</strong>: nur
+                                <span class="badge" style="background-color: {{ e.nur_dienst.farbe }};">{{ e.nur_dienst.kurzname }}</span>
+                                {{ e.nur_dienst.name }}
+                            </li>
+                            {% else %}
+                            <li class="text-muted">Keine aktiven Einschränkungen</li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-muted mb-0 small">
+                            Keine Einschränkungen definiert.
+                            <a href="{{ url_for('mitarbeiter.einschraenkungen', id=mitarbeiter.id) }}">Jetzt hinzufügen</a>
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if dienste %}
+            <div class="card mt-3">
+                <div class="card-header">
+                    <i class="bi bi-calendar-check"></i> Dienst-Präferenzen pro Monat
+                    <small class="text-muted">(Soft-Regeln)</small>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">
+                        Mindest-/Maximalanzahl bestimmter Dienste pro Monat für diesen Mitarbeiter.
+                    </p>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Dienst</th>
+                                <th style="width: 90px;">Min</th>
+                                <th style="width: 90px;">Max</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in dienste %}
+                            {% set ns = namespace(min_val=0, max_val='') %}
+                            {% if mitarbeiter %}
+                                {% for pref in mitarbeiter.dienst_praeferenzen %}
+                                    {% if pref.dienst_id == d.id %}
+                                        {% set ns.min_val = pref.min_pro_monat %}
+                                        {% set ns.max_val = pref.max_pro_monat if pref.max_pro_monat else '' %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                            <tr>
+                                <td>
+                                    <span class="badge" style="background-color: {{ d.farbe }};">
+                                        {{ d.kurzname }}
+                                    </span>
+                                    {{ d.name }}
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm"
+                                           name="dienst_{{ d.id }}_min"
+                                           value="{{ ns.min_val }}"
+                                           min="0" max="31" placeholder="0">
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm"
+                                           name="dienst_{{ d.id }}_max"
+                                           value="{{ ns.max_val }}"
+                                           min="0" max="31" placeholder="-">
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> Speichern
+                </button>
+                <a href="{{ url_for('mitarbeiter.index') }}" class="btn btn-secondary">
+                    Abbrechen
+                </a>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const basisWochenstunden = {{ basis_wochenstunden }};
+
+    function updateStundenAnzeige(prozent) {
+        document.getElementById('stellenanteil_display').textContent = prozent + '%';
+        const stunden = (basisWochenstunden * prozent / 100).toFixed(1);
+        document.getElementById('stunden_display').textContent = stunden;
+    }
+</script>
+{% endblock %}
