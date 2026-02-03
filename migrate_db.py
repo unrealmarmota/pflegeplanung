@@ -21,6 +21,7 @@ def migrate():
         # Dienste: min_besetzung und max_besetzung
         ("dienste", "min_besetzung", "INTEGER DEFAULT 1"),
         ("dienste", "max_besetzung", "INTEGER"),
+        ("dienste", "ist_abwesenheit", "BOOLEAN DEFAULT 0"),  # Urlaub, Krank - nicht auto-planbar
 
         # Qualifikationen: Hierarchie (inkludiert andere Qualifikation)
         ("qualifikationen", "inkludiert_id", "INTEGER REFERENCES qualifikationen(id)"),

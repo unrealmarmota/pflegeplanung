@@ -1,6 +1,7 @@
 from app import db
 from datetime import date
 import enum
+import json
 
 
 class TagTyp(enum.Enum):
@@ -165,6 +166,33 @@ class Mitarbeiter(db.Model):
     eintrittsdatum = db.Column(db.Date, default=date.today)
     stellenanteil = db.Column(db.Float, default=100.0)  # Prozent (100 = Vollzeit)
     aktiv = db.Column(db.Boolean, default=True)
+    _regel_ausnahmen = db.Column('regel_ausnahmen', db.Text, default='{}')
+
+    @property
+    def regel_ausnahmen(self):
+        """Individuelle Regel-Überschreibungen als Dict.
+
+        Beispiel:
+        {
+            'MAX_TAGE_FOLGE': 7,        # Dieser MA darf 7 Tage am Stück arbeiten
+            'MAX_NAECHTE_MONAT': 0,     # Dieser MA macht keine Nächte
+            'MIN_NAECHTE_MONAT': 0,     # Keine Nacht-Pflicht
+            'WOCHENENDE_ROTATION': 5,   # Darf alle Wochenenden arbeiten
+            'MIN_WOCHENENDEN_MONAT': 0  # Keine WE-Pflicht
+        }
+        """
+        return json.loads(self._regel_ausnahmen) if self._regel_ausnahmen else {}
+
+    @regel_ausnahmen.setter
+    def regel_ausnahmen(self, value):
+        self._regel_ausnahmen = json.dumps(value) if value else '{}'
+
+    def get_regel_wert(self, regel_typ, default):
+        """Gibt den individuellen Regelwert zurück, oder den Default wenn nicht überschrieben."""
+        ausnahmen = self.regel_ausnahmen
+        if regel_typ in ausnahmen:
+            return ausnahmen[regel_typ]
+        return default
 
     @property
     def arbeitsstunden_woche(self):

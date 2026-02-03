@@ -20,6 +20,9 @@ class RegelTyp(enum.Enum):
     KEIN_WOCHENENDE = 'KEIN_WOCHENENDE'
     MAX_NACHT_BLOECKE = 'MAX_NACHT_BLOECKE'
     MAX_NAECHTE_MONAT = 'MAX_NAECHTE_MONAT'
+    # Fairness-Regeln
+    MIN_NAECHTE_MONAT = 'MIN_NAECHTE_MONAT'
+    MIN_WOCHENENDEN_MONAT = 'MIN_WOCHENENDEN_MONAT'
 
 
 REGEL_TYP_BESCHREIBUNGEN = {
@@ -126,6 +129,20 @@ REGEL_TYP_BESCHREIBUNGEN = {
         'beschreibung': 'Begrenzt die absolute Anzahl an Nachtdiensten pro Mitarbeiter pro Monat.',
         'parameter': {
             'max': {'typ': 'integer', 'label': 'Max. Nächte', 'default': 8}
+        }
+    },
+    RegelTyp.MIN_NAECHTE_MONAT: {
+        'name': 'Min. Nächte pro Monat (Fairness)',
+        'beschreibung': 'Mindestanzahl Nachtdienste pro Mitarbeiter pro Monat für faire Verteilung. Wird proportional zum Stellenanteil angepasst.',
+        'parameter': {
+            'min': {'typ': 'integer', 'label': 'Min. Nächte (Vollzeit)', 'default': 4}
+        }
+    },
+    RegelTyp.MIN_WOCHENENDEN_MONAT: {
+        'name': 'Min. Wochenenden pro Monat (Fairness)',
+        'beschreibung': 'Mindestanzahl Wochenenden pro Mitarbeiter pro Monat für faire Verteilung. Wird proportional zum Stellenanteil angepasst.',
+        'parameter': {
+            'min': {'typ': 'integer', 'label': 'Min. Wochenenden (Vollzeit)', 'default': 1}
         }
     }
 }

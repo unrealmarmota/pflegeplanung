@@ -1,3 +1,5 @@
+import logging
+import sys
 from flask import Flask, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -12,6 +14,20 @@ login_manager = LoginManager()
 def create_app(config_name='default'):
     app = Flask(__name__)
     app.config.from_object(config[config_name])
+
+    # Logging konfigurieren
+    log_level = logging.DEBUG if app.debug else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    # Werkzeug und SQLAlchemy weniger verbose
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
 
     db.init_app(app)
     migrate.init_app(app, db)

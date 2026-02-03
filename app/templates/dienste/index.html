@@ -22,7 +22,14 @@
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center"
                  style="background-color: {{ d.farbe }}; color: white;">
-                <span class="fw-bold">{{ d.name }}</span>
+                <span class="fw-bold">
+                    {{ d.name }}
+                    {% if d.ist_abwesenheit %}
+                    <span class="badge bg-light text-dark ms-1" title="Abwesenheit - wird nicht automatisch geplant">
+                        <i class="bi bi-calendar-x"></i>
+                    </span>
+                    {% endif %}
+                </span>
                 <span class="badge bg-light text-dark">{{ d.kurzname }}</span>
             </div>
             <div class="card-body">

@@ -51,6 +51,8 @@ def create():
         except ValueError:
             max_besetzung = None
 
+        ist_abwesenheit = request.form.get('ist_abwesenheit') == 'on'
+
         dienst = Dienst(
             name=name,
             kurzname=kurzname,
@@ -58,7 +60,8 @@ def create():
             ende_zeit=ende_zeit,
             farbe=farbe,
             min_besetzung=min_besetzung,
-            max_besetzung=max_besetzung
+            max_besetzung=max_besetzung,
+            ist_abwesenheit=ist_abwesenheit
         )
         db.session.add(dienst)
         db.session.flush()
@@ -131,6 +134,8 @@ def edit(id):
         except ValueError:
             max_besetzung = None
 
+        ist_abwesenheit = request.form.get('ist_abwesenheit') == 'on'
+
         dienst.name = name
         dienst.kurzname = kurzname
         dienst.start_zeit = start_zeit
@@ -138,6 +143,7 @@ def edit(id):
         dienst.farbe = farbe
         dienst.min_besetzung = min_besetzung
         dienst.max_besetzung = max_besetzung
+        dienst.ist_abwesenheit = ist_abwesenheit
 
         # Update qualification requirements
         DienstQualifikation.query.filter_by(dienst_id=id).delete()

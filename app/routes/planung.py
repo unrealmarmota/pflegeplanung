@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from sqlalchemy.exc import IntegrityError
 from app import db
 from app.models import (
     Mitarbeiter, Dienst, Dienstplan, DienstplanStatus,
@@ -11,6 +12,17 @@ from dateutil.relativedelta import relativedelta
 import calendar
 
 bp = Blueprint('planung', __name__, url_prefix='/planung')
+
+
+def validate_jahr_monat(jahr, monat):
+    """Validiert Jahr und Monat Parameter. Gibt (jahr, monat, error) zurück."""
+    if jahr is None or monat is None:
+        return None, None, 'Jahr und Monat sind erforderlich'
+    if not (1900 <= jahr <= 2100):
+        return None, None, f'Ungültiges Jahr: {jahr} (muss zwischen 1900 und 2100 liegen)'
+    if not (1 <= monat <= 12):
+        return None, None, f'Ungültiger Monat: {monat} (muss zwischen 1 und 12 liegen)'
+    return jahr, monat, None
 
 
 @bp.route('/')
@@ -79,6 +91,12 @@ def kalender():
     # Get year and month from query params
     jahr = request.args.get('jahr', date.today().year, type=int)
     monat = request.args.get('monat', date.today().month, type=int)
+
+    # Validierung
+    jahr, monat, error = validate_jahr_monat(jahr, monat)
+    if error:
+        flash(error, 'danger')
+        return redirect(url_for('planung.dashboard'))
 
     # Calculate previous/next month
     aktuell = date(jahr, monat, 1)
@@ -193,27 +211,42 @@ def api_eintrag():
         datum=datum
     ).first()
 
-    if dienst_id:
-        # Create or update
-        if existing:
+    try:
+        if dienst_id:
+            # Create or update
+            if existing:
+                existing.dienst_id = dienst_id
+                existing.status = DienstplanStatus.GEPLANT
+            else:
+                dp = Dienstplan(
+                    datum=datum,
+                    mitarbeiter_id=mitarbeiter_id,
+                    dienst_id=dienst_id,
+                    status=DienstplanStatus.GEPLANT
+                )
+                db.session.add(dp)
+        else:
+            # Delete if exists
+            if existing:
+                db.session.delete(existing)
+
+        db.session.commit()
+        return jsonify({'success': True})
+
+    except IntegrityError:
+        db.session.rollback()
+        # Race condition: Entry was created by another request
+        # Retry with update
+        existing = Dienstplan.query.filter_by(
+            mitarbeiter_id=mitarbeiter_id,
+            datum=datum
+        ).first()
+        if existing and dienst_id:
             existing.dienst_id = dienst_id
             existing.status = DienstplanStatus.GEPLANT
-        else:
-            dp = Dienstplan(
-                datum=datum,
-                mitarbeiter_id=mitarbeiter_id,
-                dienst_id=dienst_id,
-                status=DienstplanStatus.GEPLANT
-            )
-            db.session.add(dp)
-    else:
-        # Delete if exists
-        if existing:
-            db.session.delete(existing)
-
-    db.session.commit()
-
-    return jsonify({'success': True})
+            db.session.commit()
+            return jsonify({'success': True})
+        return jsonify({'error': 'Konflikt bei gleichzeitiger Bearbeitung'}), 409
 
 
 @bp.route('/api/wunsch', methods=['POST'])
@@ -331,6 +364,12 @@ def konflikte():
     jahr = request.args.get('jahr', date.today().year, type=int)
     monat = request.args.get('monat', date.today().month, type=int)
 
+    # Validierung
+    jahr, monat, error = validate_jahr_monat(jahr, monat)
+    if error:
+        flash(error, 'danger')
+        return redirect(url_for('planung.dashboard'))
+
     konflikt_service = KonfliktErkennung()
     konflikte = konflikt_service.pruefe_monat(jahr, monat)
 
@@ -419,6 +458,11 @@ def api_export(format):
     jahr = request.args.get('jahr', date.today().year, type=int)
     monat = request.args.get('monat', date.today().month, type=int)
 
+    # Validierung
+    jahr, monat, error = validate_jahr_monat(jahr, monat)
+    if error:
+        return jsonify({'error': error}), 400
+
     from app.services.export import ExportService
     export_service = ExportService()
 
@@ -435,6 +479,12 @@ def stundenuebersicht():
     """Soll/Ist Stundenübersicht pro Mitarbeiter"""
     jahr = request.args.get('jahr', date.today().year, type=int)
     monat = request.args.get('monat', date.today().month, type=int)
+
+    # Validierung
+    jahr, monat, error = validate_jahr_monat(jahr, monat)
+    if error:
+        flash(error, 'danger')
+        return redirect(url_for('planung.dashboard'))
 
     # Vorheriger/Nächster Monat für Navigation
     aktuell = date(jahr, monat, 1)
@@ -534,6 +584,11 @@ def api_diagnose():
     """Diagnose-Endpoint: Prüft ob Planung möglich ist"""
     jahr = request.args.get('jahr', date.today().year, type=int)
     monat = request.args.get('monat', date.today().month, type=int)
+
+    # Validierung
+    jahr, monat, error = validate_jahr_monat(jahr, monat)
+    if error:
+        return jsonify({'error': error}), 400
 
     mitarbeiter = Mitarbeiter.query.filter_by(aktiv=True).all()
     dienste = Dienst.query.all()

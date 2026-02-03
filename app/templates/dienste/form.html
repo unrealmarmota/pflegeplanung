@@ -92,6 +92,21 @@
                             </span>
                         </div>
                     </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="ist_abwesenheit" name="ist_abwesenheit"
+                                   {{ 'checked' if dienst and dienst.ist_abwesenheit else '' }}>
+                            <label class="form-check-label" for="ist_abwesenheit">
+                                <strong>Abwesenheit</strong> (Urlaub, Krank, etc.)
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle"></i>
+                            Abwesenheiten werden <strong>nicht</strong> automatisch geplant,
+                            zählen aber als Arbeitsstunden für Soll/Ist.
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

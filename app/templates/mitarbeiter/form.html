@@ -224,6 +224,32 @@
                     </table>
                 </div>
             </div>
+
+            <!-- Erweiterte Einstellungen (nur bei bestehenden Mitarbeitern) -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <i class="bi bi-sliders"></i> Erweiterte Einstellungen
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('mitarbeiter.regel_ausnahmen', id=mitarbeiter.id) }}" class="btn btn-outline-primary">
+                            <i class="bi bi-sliders"></i> Regel-Ausnahmen
+                            {% if mitarbeiter.regel_ausnahmen %}
+                                <span class="badge bg-primary">{{ mitarbeiter.regel_ausnahmen|length }}</span>
+                            {% endif %}
+                        </a>
+                        <a href="{{ url_for('mitarbeiter.einschraenkungen', id=mitarbeiter.id) }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-calendar-x"></i> Dienst-Einschränkungen
+                            {% if mitarbeiter.dienst_einschraenkungen %}
+                                <span class="badge bg-secondary">{{ mitarbeiter.dienst_einschraenkungen|length }}</span>
+                            {% endif %}
+                        </a>
+                    </div>
+                    <p class="text-muted small mt-2 mb-0">
+                        Hier kannst du individuelle Regeln und Einschränkungen für diesen Mitarbeiter festlegen.
+                    </p>
+                </div>
+            </div>
             {% endif %}
 
             <div class="d-flex gap-2 mt-3">

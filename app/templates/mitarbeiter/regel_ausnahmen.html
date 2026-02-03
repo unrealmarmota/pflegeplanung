@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Regel-Ausnahmen - {{ mitarbeiter.name }} - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('mitarbeiter.index') }}">Mitarbeiter</a>
+                </li>
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('mitarbeiter.edit', id=mitarbeiter.id) }}">{{ mitarbeiter.name }}</a>
+                </li>
+                <li class="breadcrumb-item active">Regel-Ausnahmen</li>
+            </ol>
+        </nav>
+        <h1>
+            <i class="bi bi-sliders"></i>
+            Regel-Ausnahmen: {{ mitarbeiter.name }}
+        </h1>
+        <p class="text-muted">
+            Hier kannst du für diesen Mitarbeiter individuelle Werte festlegen, die die globalen Regeln überschreiben.
+            <br>
+            <strong>Beispiel:</strong> "{{ mitarbeiter.name }} darf 7 Tage am Stück arbeiten" oder "Keine Nachtdienst-Pflicht".
+        </p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <form action="{{ url_for('mitarbeiter.regel_ausnahmen_speichern', id=mitarbeiter.id) }}" method="POST">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-gear"></i> Individuelle Regel-Werte
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">Aktiv</th>
+                                <th>Regel</th>
+                                <th style="width: 120px;">Wert</th>
+                                <th>Global</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for key, info in regel_info.items() %}
+                            {% set hat_ausnahme = key in mitarbeiter.regel_ausnahmen %}
+                            {% set aktueller_wert = mitarbeiter.regel_ausnahmen.get(key, info.default) %}
+                            <tr>
+                                <td class="text-center">
+                                    <div class="form-check">
+                                        <input class="form-check-input ausnahme-checkbox" type="checkbox"
+                                               id="hat_{{ key }}" name="hat_{{ key }}"
+                                               data-target="wert_{{ key }}"
+                                               {{ 'checked' if hat_ausnahme }}>
+                                    </div>
+                                </td>
+                                <td>
+                                    <label for="hat_{{ key }}" class="mb-0">
+                                        <strong>{{ info.name }}</strong>
+                                    </label>
+                                    <br>
+                                    <small class="text-muted">{{ info.beschreibung }}</small>
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm ausnahme-wert"
+                                           id="wert_{{ key }}" name="wert_{{ key }}"
+                                           value="{{ aktueller_wert }}"
+                                           min="{{ info.min }}" max="{{ info.max }}"
+                                           {{ '' if hat_ausnahme else 'disabled' }}>
+                                </td>
+                                <td class="text-muted">
+                                    <small>{{ info.default }}</small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Speichern
+                    </button>
+                    <a href="{{ url_for('mitarbeiter.edit', id=mitarbeiter.id) }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Zurück
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle"></i> Aktuelle Ausnahmen
+            </div>
+            <div class="card-body">
+                {% if mitarbeiter.regel_ausnahmen %}
+                    <ul class="list-unstyled mb-0">
+                        {% for key, wert in mitarbeiter.regel_ausnahmen.items() %}
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle text-success"></i>
+                            <strong>{{ regel_info[key].name }}:</strong> {{ wert }}
+                            <small class="text-muted">(statt {{ regel_info[key].default }})</small>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-dash-circle"></i>
+                        Keine Ausnahmen. Es gelten die globalen Regeln.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-lightbulb"></i> Typische Anwendungsfälle
+            </div>
+            <div class="card-body">
+                <ul class="small mb-0">
+                    <li class="mb-2">
+                        <strong>Nur Wochenende:</strong><br>
+                        MAX_TAGE_FOLGE=7, WOCHENENDE_ROTATION=5, MIN_WOCHENENDEN=0
+                    </li>
+                    <li class="mb-2">
+                        <strong>Keine Nächte:</strong><br>
+                        MAX_NAECHTE=0, MIN_NAECHTE=0
+                    </li>
+                    <li class="mb-2">
+                        <strong>Mehr Flexibilität:</strong><br>
+                        MAX_TAGE_FOLGE=7 (statt 5)
+                    </li>
+                    <li>
+                        <strong>Keine WE-Pflicht:</strong><br>
+                        MIN_WOCHENENDEN=0
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-link-45deg"></i> Weitere Einstellungen
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('mitarbeiter.einschraenkungen', id=mitarbeiter.id) }}" class="btn btn-outline-secondary btn-sm w-100 mb-2">
+                    <i class="bi bi-calendar-x"></i> Dienst-Einschränkungen
+                </a>
+                <a href="{{ url_for('mitarbeiter.edit', id=mitarbeiter.id) }}" class="btn btn-outline-secondary btn-sm w-100">
+                    <i class="bi bi-pencil"></i> Stammdaten bearbeiten
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Checkbox aktiviert/deaktiviert das zugehörige Input-Feld
+    document.querySelectorAll('.ausnahme-checkbox').forEach(function(checkbox) {
+        checkbox.addEventListener('change', function() {
+            var targetId = this.getAttribute('data-target');
+            var input = document.getElementById(targetId);
+            if (input) {
+                input.disabled = !this.checked;
+                if (this.checked) {
+                    input.focus();
+                }
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

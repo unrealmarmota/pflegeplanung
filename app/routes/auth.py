@@ -1,8 +1,18 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 from flask_login import login_user, logout_user, login_required, current_user
+from urllib.parse import urlparse
 from app.models import User
 from app import db
 from datetime import datetime
+
+
+def is_safe_url(target):
+    """Prüft ob URL sicher ist (keine externe Weiterleitung)"""
+    if not target:
+        return False
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(target)
+    return test_url.scheme in ('', 'http', 'https') and ref_url.netloc == test_url.netloc
 
 auth = Blueprint('auth', __name__)
 
@@ -10,7 +20,7 @@ auth = Blueprint('auth', __name__)
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('main.index'))
+        return redirect(url_for('planung.dashboard'))
 
     if request.method == 'POST':
         username = request.form.get('username')
@@ -23,10 +33,11 @@ def login():
             user.last_login = datetime.utcnow()
             db.session.commit()
 
+            # Sichere URL-Validierung gegen Open Redirect
             next_page = request.args.get('next')
-            if next_page:
+            if next_page and is_safe_url(next_page):
                 return redirect(next_page)
-            return redirect(url_for('main.index'))
+            return redirect(url_for('planung.dashboard'))
 
         flash('Ungültiger Benutzername oder Passwort', 'danger')
 
@@ -59,6 +70,6 @@ def change_password():
             current_user.set_password(new_password)
             db.session.commit()
             flash('Passwort erfolgreich geändert', 'success')
-            return redirect(url_for('main.index'))
+            return redirect(url_for('planung.dashboard'))
 
     return render_template('auth/change_password.html')

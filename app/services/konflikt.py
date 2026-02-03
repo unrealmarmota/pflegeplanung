@@ -1,6 +1,7 @@
 """
 Konflikterkennung für Dienstpläne
 """
+import logging
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from collections import defaultdict
@@ -9,6 +10,8 @@ from app.models import (
     Mitarbeiter, Dienst, Dienstplan, DienstQualifikation,
     MitarbeiterWunsch, WunschTyp, Regel, RegelTyp
 )
+
+logger = logging.getLogger(__name__)
 
 
 class Konflikt:
@@ -43,6 +46,7 @@ class KonfliktErkennung:
         Returns:
             Liste von Konflikt-Objekten
         """
+        logger.info(f"Starte Konfliktprüfung für {monat:02d}/{jahr}")
         konflikte = []
 
         # Get date range
@@ -88,6 +92,12 @@ class KonfliktErkennung:
         # Sort by severity
         schwere_order = {'kritisch': 0, 'warnung': 1, 'info': 2}
         konflikte.sort(key=lambda k: (schwere_order.get(k.schwere, 99), k.datum or date.min))
+
+        # Log summary
+        kritisch = sum(1 for k in konflikte if k.schwere == 'kritisch')
+        warnungen = sum(1 for k in konflikte if k.schwere == 'warnung')
+        infos = sum(1 for k in konflikte if k.schwere == 'info')
+        logger.info(f"Konfliktprüfung abgeschlossen: {kritisch} kritisch, {warnungen} Warnungen, {infos} Infos")
 
         return konflikte
 

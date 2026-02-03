@@ -33,6 +33,7 @@ class Dienst(db.Model):
     farbe = db.Column(db.String(7), default='#0d6efd')  # Hex-Farbcode
     min_besetzung = db.Column(db.Integer, default=1)  # Mindestbesetzung
     max_besetzung = db.Column(db.Integer, nullable=True)  # Maximalbesetzung (optional)
+    ist_abwesenheit = db.Column(db.Boolean, default=False)  # Urlaub, Krank, etc. - nicht auto-planbar
 
     # Beziehungen
     qualifikation_anforderungen = db.relationship(
@@ -101,6 +102,7 @@ class Dienst(db.Model):
             'dauer_stunden': self.get_dauer_stunden(),
             'min_besetzung': self.min_besetzung,
             'max_besetzung': self.max_besetzung,
+            'ist_abwesenheit': self.ist_abwesenheit,
             'qualifikation_anforderungen': [
                 {
                     'qualifikation_id': dq.qualifikation_id,

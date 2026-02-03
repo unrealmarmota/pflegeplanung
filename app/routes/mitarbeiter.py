@@ -345,3 +345,90 @@ def einschraenkungen_api(id):
     return jsonify({
         'einschraenkungen': [e.to_dict() for e in mitarbeiter.dienst_einschraenkungen]
     })
+
+
+# ===== Regel-Ausnahmen =====
+
+# Verfügbare Regel-Ausnahmen mit Beschreibungen
+REGEL_AUSNAHMEN_INFO = {
+    'MAX_TAGE_FOLGE': {
+        'name': 'Max. Arbeitstage am Stück',
+        'beschreibung': 'Maximale aufeinanderfolgende Arbeitstage',
+        'default': 5,
+        'typ': 'int',
+        'min': 1,
+        'max': 14
+    },
+    'WOCHENENDE_ROTATION': {
+        'name': 'Max. Wochenenden/Monat',
+        'beschreibung': 'Maximale Wochenenden pro Monat',
+        'default': 2,
+        'typ': 'int',
+        'min': 0,
+        'max': 5
+    },
+    'MAX_NAECHTE_MONAT': {
+        'name': 'Max. Nächte/Monat',
+        'beschreibung': 'Maximale Nachtdienste pro Monat (0 = keine Nächte)',
+        'default': 8,
+        'typ': 'int',
+        'min': 0,
+        'max': 20
+    },
+    'MIN_NAECHTE_MONAT': {
+        'name': 'Min. Nächte/Monat',
+        'beschreibung': 'Mindest-Nachtdienste für Fairness (0 = befreit)',
+        'default': 4,
+        'typ': 'int',
+        'min': 0,
+        'max': 12
+    },
+    'MIN_WOCHENENDEN_MONAT': {
+        'name': 'Min. Wochenenden/Monat',
+        'beschreibung': 'Mindest-Wochenenden für Fairness (0 = befreit)',
+        'default': 1,
+        'typ': 'int',
+        'min': 0,
+        'max': 5
+    }
+}
+
+
+@bp.route('/<int:id>/regel-ausnahmen')
+def regel_ausnahmen(id):
+    """Zeigt und bearbeitet individuelle Regel-Ausnahmen eines Mitarbeiters"""
+    mitarbeiter = Mitarbeiter.query.get_or_404(id)
+    return render_template('mitarbeiter/regel_ausnahmen.html',
+                           mitarbeiter=mitarbeiter,
+                           regel_info=REGEL_AUSNAHMEN_INFO)
+
+
+@bp.route('/<int:id>/regel-ausnahmen/speichern', methods=['POST'])
+def regel_ausnahmen_speichern(id):
+    """Speichert die Regel-Ausnahmen"""
+    mitarbeiter = Mitarbeiter.query.get_or_404(id)
+
+    neue_ausnahmen = {}
+    for regel_key, info in REGEL_AUSNAHMEN_INFO.items():
+        # Checkbox: Hat der MA eine Ausnahme für diese Regel?
+        hat_ausnahme = request.form.get(f'hat_{regel_key}') == 'on'
+
+        if hat_ausnahme:
+            wert_str = request.form.get(f'wert_{regel_key}', '')
+            try:
+                wert = int(wert_str)
+                # Validiere Bereich
+                wert = max(info['min'], min(info['max'], wert))
+                neue_ausnahmen[regel_key] = wert
+            except (ValueError, TypeError):
+                pass  # Ungültiger Wert, ignorieren
+
+    mitarbeiter.regel_ausnahmen = neue_ausnahmen
+    db.session.commit()
+
+    if neue_ausnahmen:
+        flash(f'Regel-Ausnahmen für {mitarbeiter.name} gespeichert: {len(neue_ausnahmen)} Ausnahme(n).', 'success')
+    else:
+        flash(f'Alle Regel-Ausnahmen für {mitarbeiter.name} entfernt. Es gelten die globalen Regeln.', 'info')
+
+    return redirect(url_for('mitarbeiter.regel_ausnahmen', id=id))
