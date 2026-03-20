@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Import-Vorschau - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-eye"></i> Import-Vorschau</h1>
+        <p class="text-muted">Zuordnungen prüfen und Import bestätigen</p>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('import_export.confirm_import') }}">
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-people"></i> Mitarbeiter-Zuordnung ({{ matched|length }} Zeilen)</span>
+            <span>
+                <span class="badge bg-success">{{ matched|selectattr('match_typ', 'ne', 'keine')|list|length }} erkannt</span>
+                <span class="badge bg-danger">{{ matched|selectattr('match_typ', 'equalto', 'keine')|list|length }} offen</span>
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:5%">#</th>
+                            <th style="width:15%">XLSX-Name</th>
+                            <th style="width:20%">Zuordnung</th>
+                            <th style="width:12%">Dienste</th>
+                            <th style="width:10%">Nächte</th>
+                            <th style="width:38%">Persönliche Wünsche</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in matched %}
+                        <tr class="{{ 'table-warning' if m.match_typ == 'keine' else ('table-info' if m.match_typ == 'mehrdeutig' else '') }}">
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ m.xlsx_name }}</strong></td>
+                            <td>
+                                {% if m.match_typ == 'keine' or m.match_typ == 'mehrdeutig' %}
+                                    <select name="ma_id_{{ loop.index0 }}" class="form-select form-select-sm">
+                                        <option value="skip">-- Überspringen --</option>
+                                        {% for ma_id, ma_name in alle_ma %}
+                                            <option value="{{ ma_id }}"
+                                                    {{ 'selected' if m.ma_id == ma_id }}>
+                                                {{ ma_name }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                {% else %}
+                                    <i class="bi bi-check-circle text-success"></i>
+                                    {{ m.ma_name }}
+                                    <input type="hidden" name="ma_id_{{ loop.index0 }}" value="{{ m.ma_id }}">
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% for d in m.daten.dienste_gewuenscht %}
+                                    <span class="badge bg-secondary">{{ d }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {% if m.daten.nacht_config %}
+                                    {% if m.daten.nacht_config.typ == 'keine' %}
+                                        <span class="badge bg-dark">keine</span>
+                                    {% elif m.daten.nacht_config.typ == 'viele' %}
+                                        <span class="badge bg-info">viele</span>
+                                    {% elif m.daten.nacht_config.typ == 'block' %}
+                                        <span class="badge bg-primary">
+                                            {{ m.daten.nacht_config.get('max_naechte', '?') }}N
+                                            ({{ m.daten.nacht_config.get('min_laenge', '?') }}-{{ m.daten.nacht_config.get('max_laenge', '?') }}er)
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">{{ m.daten.nacht_config.get('roh', '?') }}</span>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small>{{ m.daten.persoenliche_wuensche or '-' }}</small>
+                                {% if m.daten.einschraenkungen %}
+                                    <br>
+                                    {% for e in m.daten.einschraenkungen %}
+                                        <span class="badge bg-warning text-dark">{{ e.beschreibung }}</span>
+                                    {% endfor %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-success btn-lg">
+            <i class="bi bi-check-lg"></i> Import durchführen
+        </button>
+        <a href="{{ url_for('import_export.upload_form') }}" class="btn btn-outline-secondary btn-lg">
+            <i class="bi bi-arrow-left"></i> Zurück
+        </a>
+    </div>
+</form>
+{% endblock %}

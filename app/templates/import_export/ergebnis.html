@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Import-Ergebnis - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-clipboard-check"></i> Import abgeschlossen</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-bar-chart"></i> Statistik
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <td><i class="bi bi-check-circle text-success"></i> Dienst-Präferenzen erstellt</td>
+                            <td class="text-end"><strong>{{ stats.praeferenzen_erstellt }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td><i class="bi bi-sliders text-primary"></i> Regel-Ausnahmen gesetzt</td>
+                            <td class="text-end"><strong>{{ stats.regel_ausnahmen_gesetzt }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td><i class="bi bi-shield-exclamation text-info"></i> Einschränkungen erstellt</td>
+                            <td class="text-end"><strong>{{ stats.einschraenkungen_erstellt }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td><i class="bi bi-skip-forward text-muted"></i> Übersprungen (nicht zugeordnet)</td>
+                            <td class="text-end"><strong>{{ stats.uebersprungen }}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% if stats.fehler %}
+        <div class="card mb-4 border-danger">
+            <div class="card-header bg-danger text-white">
+                <i class="bi bi-x-circle"></i> Fehler ({{ stats.fehler|length }})
+            </div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    {% for f in stats.fehler %}
+                    <li>{{ f }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-md-6">
+        {% if stats.hinweise %}
+        <div class="card mb-4 border-warning">
+            <div class="card-header">
+                <i class="bi bi-exclamation-triangle text-warning"></i> Manuelle Nacharbeit ({{ stats.hinweise|length }})
+            </div>
+            <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                <p class="text-muted small">Diese Wünsche konnten nicht automatisch importiert werden:</p>
+                <ul class="small">
+                    {% for h in stats.hinweise %}
+                    <li class="mb-1">{{ h }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="d-flex gap-2 mt-3">
+    <a href="{{ url_for('mitarbeiter.index') }}" class="btn btn-primary">
+        <i class="bi bi-people"></i> Mitarbeiter prüfen
+    </a>
+    <a href="{{ url_for('import_export.upload_form') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-repeat"></i> Weitere Datei importieren
+    </a>
+</div>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}XLSX-Import - Pflegeplanung{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-file-earmark-spreadsheet"></i> Dienstplanwünsche importieren</h1>
+        <p class="text-muted">XLSX-Datei mit Mitarbeiter-Präferenzen hochladen</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-upload"></i> Datei hochladen
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">XLSX-Datei auswählen</label>
+                        <input type="file" class="form-control" id="file" name="file"
+                               accept=".xlsx,.xls" required>
+                        <div class="form-text">
+                            Erwartet das Format "Dienstplanwünsche MA" mit Spalten:
+                            Name, Dienste (F/KD/T/S/N), Nächte, Präferenzen, etc.
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-eye"></i> Vorschau anzeigen
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle"></i> Was wird importiert?
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li class="mb-2">
+                        <i class="bi bi-check-circle text-success"></i>
+                        <strong>Dienst-Präferenzen:</strong> Welche Schichten bevorzugt werden (F/KD/T/S/N)
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-check-circle text-success"></i>
+                        <strong>Nacht-Konfiguration:</strong> Anzahl/Block-Länge der Nachtdienste
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-check-circle text-success"></i>
+                        <strong>WE-Limits:</strong> Max Wochenenden pro Monat
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-exclamation-triangle text-warning"></i>
+                        <strong>Freitext-Wünsche:</strong> Werden angezeigt, müssen ggf. manuell eingepflegt werden
+                    </li>
+                </ul>
+
+                <div class="alert alert-info small mb-0">
+                    <i class="bi bi-arrow-repeat"></i>
+                    Bestehende Präferenzen werden beim Import <strong>überschrieben</strong>.
+                    Regel-Ausnahmen werden ergänzt (nicht gelöscht).
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

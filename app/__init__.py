@@ -48,7 +48,7 @@ def create_app(config_name='default'):
     app.register_blueprint(auth)
 
     # Geschützte Blueprints
-    from app.routes import mitarbeiter, qualifikationen, dienste, regeln, planung, einstellungen, feiertage
+    from app.routes import mitarbeiter, qualifikationen, dienste, regeln, planung, einstellungen, feiertage, import_export
     app.register_blueprint(mitarbeiter.bp)
     app.register_blueprint(qualifikationen.bp)
     app.register_blueprint(dienste.bp)
@@ -56,6 +56,7 @@ def create_app(config_name='default'):
     app.register_blueprint(planung.bp)
     app.register_blueprint(einstellungen.bp)
     app.register_blueprint(feiertage.bp)
+    app.register_blueprint(import_export.bp)
 
     # Login für alle Routen erzwingen (außer auth und static)
     @app.before_request
