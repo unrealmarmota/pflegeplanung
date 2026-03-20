@@ -61,7 +61,7 @@ class TestMitarbeiterRoutes:
             'name': 'Test Mitarbeiter',
             'personalnummer': 'T999',
             'email': 'test@example.com',
-            'arbeitsstunden_woche': '40',
+            'stellenanteil': '100',
             'aktiv': 'on'
         }, follow_redirects=True)
 

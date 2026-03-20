@@ -107,6 +107,14 @@
                     <strong>Warnungen:</strong> Sollten überprüft werden.<br>
                     <strong>Hinweise:</strong> Zur Information.
                 </p>
+
+                {% if ki_verfuegbar %}
+                <hr>
+                <button type="button" class="btn btn-outline-info w-100"
+                        onclick="requestErklaerung('konflikte', {{ jahr }}, {{ monat }})">
+                    <i class="bi bi-lightbulb"></i> Konflikte erklären lassen
+                </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -124,4 +132,8 @@
         <i class="bi bi-calendar-week"></i> Zurück zum Dienstplan
     </a>
 </div>
+
+{% if ki_verfuegbar %}
+{% include "planung/_erklaerung_modal.html" %}
+{% endif %}
 {% endblock %}

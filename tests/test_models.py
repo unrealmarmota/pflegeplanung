@@ -45,7 +45,7 @@ class TestMitarbeiter:
                 name='Test Person',
                 personalnummer='T001',
                 email='test@example.com',
-                arbeitsstunden_woche=40.0
+                stellenanteil=100.0
             )
             db.session.add(m)
             db.session.commit()

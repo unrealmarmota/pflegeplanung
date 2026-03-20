@@ -4,7 +4,8 @@ from app import create_app, db
 from app.models import (
     Mitarbeiter, Qualifikation, MitarbeiterQualifikation,
     Dienst, DienstQualifikation, Regel, RegelTyp,
-    Dienstplan, DienstplanStatus, MitarbeiterWunsch, WunschTyp
+    Dienstplan, DienstplanStatus, MitarbeiterWunsch, WunschTyp,
+    User
 )
 
 
@@ -22,8 +23,15 @@ def app():
 
 @pytest.fixture
 def client(app):
-    """Create test client"""
-    return app.test_client()
+    """Create authenticated test client"""
+    with app.app_context():
+        User.create_admin('admin', 'admin123')
+    client = app.test_client()
+    client.post('/login', data={
+        'username': 'admin',
+        'password': 'admin123'
+    })
+    return client
 
 
 @pytest.fixture
@@ -88,19 +96,19 @@ def sample_mitarbeiter(app, sample_qualifikationen):
             name='Anna Müller',
             personalnummer='P001',
             email='anna@example.com',
-            arbeitsstunden_woche=38.5,
+            stellenanteil=100.0,
             aktiv=True
         )
         m2 = Mitarbeiter(
             name='Bernd Schmidt',
             personalnummer='P002',
-            arbeitsstunden_woche=40.0,
+            stellenanteil=100.0,
             aktiv=True
         )
         m3 = Mitarbeiter(
             name='Clara Weber',
             personalnummer='P003',
-            arbeitsstunden_woche=30.0,
+            stellenanteil=75.0,
             aktiv=True
         )
 
@@ -149,10 +157,10 @@ def sample_regeln(app, sample_dienste, sample_qualifikationen):
             aktiv=True
         )
         r3 = Regel(
-            name='Mind. 2 Personen Frühdienst',
+            name='Mind. 1 Person Frühdienst',
             typ=RegelTyp.MIN_PERSONAL_DIENST,
-            parameter={'dienst_id': sample_dienste[0], 'min': 2},
-            prioritaet=1,
+            parameter={'dienst_id': sample_dienste[0], 'min': 1},
+            prioritaet=2,
             aktiv=True
         )
 

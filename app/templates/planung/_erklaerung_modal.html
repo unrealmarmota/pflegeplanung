@@ -1,0 +1,88 @@
+<!-- KI-Erklärung Modal (wiederverwendbar) -->
+<div class="modal fade" id="erklaerungModal" tabindex="-1" aria-labelledby="erklaerungModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="erklaerungModalLabel">
+                    <i class="bi bi-lightbulb"></i> KI-Analyse
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body">
+                <div id="erklaerung-spinner" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Analyse läuft...</span>
+                    </div>
+                    <p class="mt-2 text-muted">KI-Analyse wird erstellt...</p>
+                    <small class="text-muted">Mitarbeiterdaten werden pseudonymisiert übermittelt (DSGVO-konform)</small>
+                </div>
+                <div id="erklaerung-inhalt" style="display:none;">
+                    <div id="erklaerung-text" class="mb-3" style="white-space: pre-wrap;"></div>
+                    <hr>
+                    <small class="text-muted">
+                        <i class="bi bi-shield-check"></i> Personaldaten wurden vor der Analyse pseudonymisiert.
+                        <span id="erklaerung-meta"></span>
+                    </small>
+                </div>
+                <div id="erklaerung-fehler" class="alert alert-warning" style="display:none;">
+                    <i class="bi bi-exclamation-triangle"></i> <span id="erklaerung-fehler-text"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function requestErklaerung(useCase, jahr, monat) {
+    // Modal öffnen und Spinner zeigen
+    const modal = new bootstrap.Modal(document.getElementById('erklaerungModal'));
+    document.getElementById('erklaerung-spinner').style.display = 'block';
+    document.getElementById('erklaerung-inhalt').style.display = 'none';
+    document.getElementById('erklaerung-fehler').style.display = 'none';
+
+    // Titel anpassen
+    const titel = {
+        'plan': 'Plan-Erklärung',
+        'fehlschlag': 'Fehlschlag-Analyse',
+        'konflikte': 'Konflikt-Analyse',
+        'fairness': 'Fairness-Bewertung'
+    };
+    document.getElementById('erklaerungModalLabel').innerHTML =
+        '<i class="bi bi-lightbulb"></i> KI-Analyse: ' + (titel[useCase] || useCase);
+
+    modal.show();
+
+    try {
+        const response = await fetch('/planung/api/erklaerung', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({use_case: useCase, jahr: jahr, monat: monat})
+        });
+
+        const data = await response.json();
+
+        document.getElementById('erklaerung-spinner').style.display = 'none';
+
+        if (data.erfolg) {
+            document.getElementById('erklaerung-text').textContent = data.erklaerung;
+            const meta = data.tokens_verwendet
+                ? `Modell: ${data.modell || '?'}, ${data.tokens_verwendet} Tokens`
+                : '';
+            document.getElementById('erklaerung-meta').textContent = meta;
+            document.getElementById('erklaerung-inhalt').style.display = 'block';
+        } else {
+            document.getElementById('erklaerung-fehler-text').textContent =
+                data.fehler || 'Unbekannter Fehler';
+            document.getElementById('erklaerung-fehler').style.display = 'block';
+        }
+    } catch (err) {
+        document.getElementById('erklaerung-spinner').style.display = 'none';
+        document.getElementById('erklaerung-fehler-text').textContent =
+            'Verbindungsfehler: ' + err.message;
+        document.getElementById('erklaerung-fehler').style.display = 'block';
+    }
+}
+</script>

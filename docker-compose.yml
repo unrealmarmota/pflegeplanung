@@ -11,6 +11,8 @@ services:
     environment:
       - FLASK_ENV=production
       - SECRET_KEY=aendere-mich-auf-einen-langen-zufalls-string
+      # Optional: KI-Erklärungen (alternativ über Web-UI konfigurierbar)
+      # - CLAUDE_API_KEY=sk-ant-...
 
     ports:
       - "9500:5000"

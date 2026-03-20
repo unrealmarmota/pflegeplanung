@@ -3,15 +3,23 @@ from sqlalchemy.exc import IntegrityError
 from app import db
 from app.models import (
     Mitarbeiter, Dienst, Dienstplan, DienstplanStatus,
-    MitarbeiterWunsch, WunschTyp, Regel, Qualifikation
+    MitarbeiterWunsch, WunschTyp, Regel, Qualifikation, Einstellungen
 )
 from app.services.planer import DienstPlaner
 from app.services.konflikt import KonfliktErkennung
+from app.services.ki_erklaerung import KIErklaerung
+from app.services.pseudonymisierung import Pseudonymisierer
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 import calendar
+import logging
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('planung', __name__, url_prefix='/planung')
+
+# Cache für Plan-Ergebnisse (für KI-Erklärungen nach Redirect)
+_plan_cache = {}
 
 
 def validate_jahr_monat(jahr, monat):
@@ -172,6 +180,7 @@ def kalender():
             'prozent': prozent
         }
 
+    ki = KIErklaerung()
     return render_template('planung/kalender.html',
                            jahr=jahr,
                            monat=monat,
@@ -185,7 +194,8 @@ def kalender():
                            wunsch_dict=wunsch_dict,
                            ausschluss_dict=ausschluss_dict,
                            stunden_dict=stunden_dict,
-                           heute=date.today())
+                           heute=date.today(),
+                           ki_verfuegbar=ki.ist_verfuegbar())
 
 
 @bp.route('/api/eintrag', methods=['POST'])
@@ -318,6 +328,18 @@ def generieren():
         try:
             result = planer.generiere_plan(jahr, monat, ueberschreiben=ueberschreiben)
 
+            # Cache Result für KI-Erklärungen
+            _plan_cache[(jahr, monat)] = {
+                'objective_breakdown': result.get('objective_breakdown'),
+                'diagnose': result.get('diagnose'),
+                'validierungen': result.get('validierungen'),
+                'erfolg': result.get('erfolg'),
+                'fehler': result.get('fehler'),
+                'teilweise': result.get('teilweise', False),
+            }
+            # Invalidiere KI-Cache für diesen Monat
+            KIErklaerung().invalidiere_cache(jahr, monat)
+
             if result['erfolg']:
                 if result.get('teilweise'):
                     flash(f'Teillösung für {monat}/{jahr}: {result["eintraege"]} Einträge erstellt. '
@@ -373,11 +395,101 @@ def konflikte():
     konflikt_service = KonfliktErkennung()
     konflikte = konflikt_service.pruefe_monat(jahr, monat)
 
+    ki = KIErklaerung()
     return render_template('planung/konflikte.html',
                            konflikte=konflikte,
                            jahr=jahr,
                            monat=monat,
-                           monat_name=calendar.month_name[monat])
+                           monat_name=calendar.month_name[monat],
+                           ki_verfuegbar=ki.ist_verfuegbar())
+
+
+@bp.route('/api/erklaerung', methods=['POST'])
+def api_erklaerung():
+    """AJAX-Endpoint für KI-Erklärungen (DSGVO-konform pseudonymisiert)"""
+    ki = KIErklaerung()
+    if not ki.ist_verfuegbar():
+        return jsonify({'erfolg': False, 'fehler': 'KI-Erklärungen nicht konfiguriert. '
+                        'Bitte API-Key in Einstellungen hinterlegen.'})
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'erfolg': False, 'fehler': 'Keine Daten übermittelt'}), 400
+
+    use_case = data.get('use_case')
+    jahr = data.get('jahr', date.today().year)
+    monat = data.get('monat', date.today().month)
+
+    # Lade Mitarbeiter und Regeln
+    mitarbeiter = Mitarbeiter.query.filter_by(aktiv=True).order_by(Mitarbeiter.name).all()
+    regeln = Regel.query.filter_by(aktiv=True).all()
+
+    # Pseudonymisiere
+    pseudo = Pseudonymisierer(mitarbeiter)
+    ma_pseudo = pseudo.pseudonymisiere_mitarbeiter(mitarbeiter)
+
+    try:
+        if use_case == 'plan':
+            # Plan-Erklärung: Nutze gecachtes Result
+            cached_result = _plan_cache.get((jahr, monat), {})
+            if not cached_result:
+                # Kein Cache → baue minimales Result aus DB
+                count = Dienstplan.query.filter(
+                    Dienstplan.datum >= date(jahr, monat, 1),
+                    Dienstplan.datum < date(jahr + (1 if monat == 12 else 0),
+                                            1 if monat == 12 else monat + 1, 1)
+                ).count()
+                cached_result = {
+                    'erfolg': count > 0,
+                    'objective_breakdown': {'total_schichten': count, 'solver_status': 'aus Cache'},
+                }
+            antwort = ki.erklaere_plan(cached_result, ma_pseudo, regeln, jahr, monat)
+
+        elif use_case == 'fehlschlag':
+            cached_result = _plan_cache.get((jahr, monat), {})
+            antwort = ki.erklaere_fehlschlag(cached_result, ma_pseudo, regeln, jahr, monat)
+
+        elif use_case == 'konflikte':
+            konflikt_service = KonfliktErkennung()
+            konflikte_raw = konflikt_service.pruefe_monat(jahr, monat)
+            konflikte_pseudo = pseudo.pseudonymisiere_konflikte(konflikte_raw)
+            antwort = ki.erklaere_konflikte(konflikte_pseudo, regeln, jahr, monat)
+
+        elif use_case == 'fairness':
+            # Baue Fairness-Verteilungstext
+            from collections import Counter
+            start_datum = date(jahr, monat, 1)
+            ende_datum = date(jahr + (1 if monat == 12 else 0),
+                              1 if monat == 12 else monat + 1, 1)
+            alle_dp = Dienstplan.query.filter(
+                Dienstplan.datum >= start_datum,
+                Dienstplan.datum < ende_datum
+            ).all()
+
+            lines = []
+            for ma in mitarbeiter:
+                p = pseudo.get_pseudo_fuer_id(ma.id)
+                schichten = [dp for dp in alle_dp if dp.mitarbeiter_id == ma.id]
+                dienst_counter = Counter(dp.dienst.kurzname for dp in schichten)
+                verteilung = ', '.join(f'{v}x {k}' for k, v in sorted(dienst_counter.items()))
+                lines.append(f'{p}: {ma.stellenanteil}% Stelle, '
+                             f'{len(schichten)} Schichten ({verteilung})')
+
+            verteilung_text = '\n'.join(lines)
+            antwort = ki.bewerte_fairness(verteilung_text, regeln, jahr, monat)
+
+        else:
+            return jsonify({'erfolg': False, 'fehler': f'Unbekannter Use-Case: {use_case}'}), 400
+
+        # Depseudonymisiere die Antwort für die Anzeige
+        if antwort.get('erfolg') and antwort.get('erklaerung'):
+            antwort['erklaerung'] = pseudo.depseudonymisiere_text(antwort['erklaerung'])
+
+        return jsonify(antwort)
+
+    except Exception as e:
+        logger.error(f"KI-Erklärung Fehler: {e}")
+        return jsonify({'erfolg': False, 'fehler': f'Fehler: {str(e)}'}), 500
 
 
 @bp.route('/export')

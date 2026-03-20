@@ -79,4 +79,67 @@
         </div>
     </div>
 </div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-lightbulb"></i> KI-Erklärungen
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <!-- Hidden: Arbeitszeit mitsenden damit nicht verloren geht -->
+                    <input type="hidden" name="basis_wochenstunden" value="{{ basis_wochenstunden }}">
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="ki_erklaerung_aktiv"
+                                   name="ki_erklaerung_aktiv" {{ 'checked' if ki_aktiv }}>
+                            <label class="form-check-label" for="ki_erklaerung_aktiv">
+                                KI-Erklärungen aktivieren
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="claude_api_key" class="form-label">Claude API-Key</label>
+                        <input type="password" class="form-control" id="claude_api_key"
+                               name="claude_api_key" value="{{ claude_api_key }}"
+                               placeholder="sk-ant-...">
+                        <div class="form-text">
+                            API-Key von <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a>.
+                            Alternativ als Umgebungsvariable <code>CLAUDE_API_KEY</code> setzen.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="claude_modell" class="form-label">Modell</label>
+                        <select class="form-select" id="claude_modell" name="claude_modell">
+                            <option value="haiku" {{ 'selected' if claude_modell == 'haiku' }}>
+                                Haiku (schnell, günstig ~$0.001/Erklärung)
+                            </option>
+                            <option value="sonnet" {{ 'selected' if claude_modell == 'sonnet' }}>
+                                Sonnet (ausgewogen ~$0.005/Erklärung)
+                            </option>
+                            <option value="opus" {{ 'selected' if claude_modell == 'opus' }}>
+                                Opus (beste Qualität ~$0.03/Erklärung)
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="alert alert-info small mb-3">
+                        <i class="bi bi-shield-check"></i>
+                        <strong>DSGVO-konform:</strong> Mitarbeiterdaten werden vor der Übermittlung an die KI
+                        pseudonymisiert. Es werden keine Namen, E-Mail-Adressen, Telefonnummern oder
+                        Personalnummern an den KI-Dienst übermittelt.
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Speichern
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

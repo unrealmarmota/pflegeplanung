@@ -23,6 +23,7 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'pflegeplanung-geheim-key-2024'
     SQLALCHEMY_DATABASE_URI = get_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    CLAUDE_API_KEY = os.environ.get('CLAUDE_API_KEY')
 
 
 class DevelopmentConfig(Config):

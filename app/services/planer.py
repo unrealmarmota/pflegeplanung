@@ -9,7 +9,8 @@ from app import db
 from app.models import (
     Mitarbeiter, Dienst, Dienstplan, DienstplanStatus,
     MitarbeiterWunsch, WunschTyp, Regel, RegelTyp,
-    MitarbeiterDienstPraeferenz, MitarbeiterDienstEinschraenkung, TagTyp
+    MitarbeiterDienstPraeferenz, MitarbeiterDienstEinschraenkung, TagTyp,
+    Einstellungen
 )
 
 # Logger für dieses Modul
@@ -23,8 +24,16 @@ class DienstPlaner:
         self.model = None
         self.solver = None
         self.shifts = {}  # (mitarbeiter_id, tag, dienst_id) -> BoolVar
+        self.has_shift_vars = {}  # (mitarbeiter_id, tag) -> BoolVar (1 = arbeitet an diesem Tag)
         self.diagnose_info = []  # Sammelt Diagnose-Informationen
         self.soft_penalties = []  # Sammelt Soft-Constraint-Penalties für Objective
+        self.vollzeit_stunden = 38.5
+        # Vormonat-Daten für monatsübergreifende Constraints
+        self.vormonat_dienste = {}  # (ma_id, tag_offset) -> dienst_id, tag_offset: 0=letzter Tag, -1=vorletzter
+        self.vormonat_jahr = None
+        self.vormonat_monat = None
+        self.vormonat_letzter_tag = None
+        self.hint_zuweisungen = set()  # Solution Hints aus vorherigem Plan
 
     def generiere_plan(self, jahr, monat, ueberschreiben=False, best_possible=True):
         """
@@ -53,6 +62,12 @@ class DienstPlaner:
         logger.info(f"Gefunden: {len(mitarbeiter)} aktive MA, {len(dienste)} planbare Dienste, "
                     f"{len(alle_dienste) - len(dienste)} Abwesenheits-Dienste, {len(regeln)} aktive Regeln")
 
+        # Vollzeit-Stunden aus Einstellungen laden (nicht hardcoden)
+        self.vollzeit_stunden = Einstellungen.get_float('basis_wochenstunden', 38.5)
+
+        # Vormonat-Daten für monatsübergreifende Constraints laden
+        self._lade_vormonat(jahr, monat)
+
         if not mitarbeiter:
             logger.warning("Planung abgebrochen: Keine aktiven Mitarbeiter")
             return {'erfolg': False, 'fehler': 'Keine aktiven Mitarbeiter vorhanden', 'eintraege': 0, 'warnungen': [], 'diagnose': []}
@@ -65,17 +80,24 @@ class DienstPlaner:
         _, num_days = monthrange(jahr, monat)
         tage = list(range(1, num_days + 1))
 
-        # Delete existing entries if requested
+        # Delete existing entries if requested (save for hints first)
+        self.hint_zuweisungen = set()
         if ueberschreiben:
             start_datum = date(jahr, monat, 1)
             ende_datum = date(jahr, monat, num_days)
+            # Solution Hints: alten Plan laden bevor wir löschen
+            for dp in Dienstplan.query.filter(
+                Dienstplan.datum >= start_datum,
+                Dienstplan.datum <= ende_datum
+            ).all():
+                self.hint_zuweisungen.add((dp.mitarbeiter_id, dp.datum.day, dp.dienst_id))
             try:
                 Dienstplan.query.filter(
                     Dienstplan.datum >= start_datum,
                     Dienstplan.datum <= ende_datum
                 ).delete()
                 db.session.commit()
-                logger.info(f"Bestehende Einträge für {monat:02d}/{jahr} gelöscht")
+                logger.info(f"Bestehende Einträge für {monat:02d}/{jahr} gelöscht ({len(self.hint_zuweisungen)} Hints gesichert)")
             except Exception as e:
                 db.session.rollback()
                 logger.error(f"Fehler beim Löschen bestehender Einträge: {e}")
@@ -126,6 +148,15 @@ class DienstPlaner:
                     var_name = f'shift_m{m.id}_t{tag}_d{d.id}'
                     self.shifts[(m.id, tag, d.id)] = self.model.NewBoolVar(var_name)
 
+        # Wiederverwendbare Arbeitstag-Variablen erstellen (inkl. Vormonat)
+        self._erstelle_arbeitstag_vars(mitarbeiter, dienste, tage, bestehende)
+
+        # Solution Hints aus vorherigem Plan anwenden (schnellere Konvergenz)
+        if self.hint_zuweisungen:
+            for key, var in self.shifts.items():
+                self.model.AddHint(var, 1 if key in self.hint_zuweisungen else 0)
+            logger.info(f"Solution Hints angewendet: {len(self.hint_zuweisungen)} Zuweisungen")
+
         # Constraint 1: Each employee works at most one shift per day
         for m in mitarbeiter:
             for tag in tage:
@@ -156,11 +187,12 @@ class DienstPlaner:
         self._apply_besetzung_constraints(mitarbeiter, dienste, tage, bestehende)
 
         # Objective: Maximize coverage and respect wishes
+        # Weight hierarchy: Coverage(100) > Wishes(50/20) > Fairness(30/40) > Preferences(3/5)
         objective_terms = []
 
-        # Coverage bonus: reward each assigned shift
+        # Coverage bonus: reward each assigned shift (high weight to prioritize staffing)
         for key, var in self.shifts.items():
-            objective_terms.append(var)
+            objective_terms.append(10 * var)
 
         # Wish penalties/bonuses
         for m in mitarbeiter:
@@ -171,7 +203,7 @@ class DienstPlaner:
                             # Penalty for working when wants to be free
                             for d in dienste:
                                 if (m.id, tag, d.id) in self.shifts:
-                                    objective_terms.append(-10 * self.shifts[(m.id, tag, d.id)])
+                                    objective_terms.append(-50 * self.shifts[(m.id, tag, d.id)])
                         elif w.wunsch_typ == WunschTyp.NICHT_VERFUEGBAR:
                             # Hard constraint - don't assign any shift
                             for d in dienste:
@@ -184,7 +216,7 @@ class DienstPlaner:
                         elif w.wunsch_typ == WunschTyp.DIENST_WUNSCH and w.dienst_id:
                             # Bonus for respecting shift wish
                             if (m.id, tag, w.dienst_id) in self.shifts:
-                                objective_terms.append(5 * self.shifts[(m.id, tag, w.dienst_id)])
+                                objective_terms.append(20 * self.shifts[(m.id, tag, w.dienst_id)])
 
         # Soft constraints for employee shift preferences (min/max per month)
         for m in mitarbeiter:
@@ -199,18 +231,23 @@ class DienstPlaner:
                 if shift_count_vars:
                     total_shifts = sum(shift_count_vars)
 
-                    # Soft penalty for not meeting minimum
+                    # Soft bonus for meeting minimum (capped variable pattern)
                     if pref.min_pro_monat and pref.min_pro_monat > 0:
-                        # Add bonus for each shift up to minimum
-                        for var in shift_count_vars[:pref.min_pro_monat]:
-                            objective_terms.append(3 * var)
+                        capped_min = self.model.NewIntVar(
+                            0, pref.min_pro_monat,
+                            f'pref_min_m{m.id}_d{pref.dienst_id}'
+                        )
+                        self.model.AddMinEquality(capped_min, [total_shifts, pref.min_pro_monat])
+                        objective_terms.append(3 * capped_min)
 
                     # Soft penalty for exceeding maximum
                     if pref.max_pro_monat is not None:
-                        # Penalty for shifts beyond maximum
-                        for i, var in enumerate(shift_count_vars):
-                            if i >= pref.max_pro_monat:
-                                objective_terms.append(-5 * var)
+                        over_max = self.model.NewIntVar(
+                            0, len(tage),
+                            f'pref_over_m{m.id}_d{pref.dienst_id}'
+                        )
+                        self.model.AddMaxEquality(over_max, [total_shifts - pref.max_pro_monat, 0])
+                        objective_terms.append(-5 * over_max)
 
         # Soft-Constraint-Penalties hinzufügen
         objective_terms.extend(self.soft_penalties)
@@ -237,26 +274,59 @@ class DienstPlaner:
         self.solver.parameters.max_time_in_seconds = 60.0
         status = self.solver.Solve(self.model)
         logger.info(f"Solver beendet mit Status: {self.solver.StatusName(status)}")
+        if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+            logger.info(f"Objective-Wert: {self.solver.ObjectiveValue():.0f}")
 
         if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-            # Extract solution
-            eintraege = 0
+            # Extract solution into dict for validation before DB write
+            zuweisungen = {}  # {(ma_id, tag): dienst_id}
             for m in mitarbeiter:
                 for tag in tage:
                     if (m.id, tag) in bestehende:
                         continue
-
                     for d in dienste:
                         if (m.id, tag, d.id) in self.shifts:
                             if self.solver.Value(self.shifts[(m.id, tag, d.id)]) == 1:
-                                dp = Dienstplan(
-                                    datum=date(jahr, monat, tag),
-                                    mitarbeiter_id=m.id,
-                                    dienst_id=d.id,
-                                    status=DienstplanStatus.GEPLANT
-                                )
-                                db.session.add(dp)
-                                eintraege += 1
+                                zuweisungen.setdefault((m.id, tag), []).append(d.id)
+
+            # Post-solve validation
+            validierungen = self._validiere_loesung(zuweisungen, mitarbeiter, dienste, tage, jahr, monat, wuensche, regeln)
+            for v in validierungen:
+                logger.warning(f"Post-Solve-Validierung: {v}")
+
+            # Objective breakdown
+            total_schichten = sum(len(d_ids) for d_ids in zuweisungen.values())
+            frei_verletzt = 0
+            wunsch_erfuellt = 0
+            for (ma_id, tag), d_ids in zuweisungen.items():
+                if (ma_id, tag) in wuensche:
+                    for w in wuensche[(ma_id, tag)]:
+                        if w.wunsch_typ == WunschTyp.FREI and d_ids:
+                            frei_verletzt += 1
+                        elif w.wunsch_typ == WunschTyp.DIENST_WUNSCH and w.dienst_id in d_ids:
+                            wunsch_erfuellt += 1
+            objective_breakdown = {
+                'total_schichten': total_schichten,
+                'objective_wert': self.solver.ObjectiveValue(),
+                'solver_status': self.solver.StatusName(status),
+                'frei_wuensche_verletzt': frei_verletzt,
+                'dienst_wuensche_erfuellt': wunsch_erfuellt,
+                'validierungsfehler': len(validierungen),
+            }
+            logger.info(f"Objective-Breakdown: {objective_breakdown}")
+
+            # Write to database
+            eintraege = 0
+            for (ma_id, tag), dienst_ids in zuweisungen.items():
+                for d_id in dienst_ids:
+                    dp = Dienstplan(
+                        datum=date(jahr, monat, tag),
+                        mitarbeiter_id=ma_id,
+                        dienst_id=d_id,
+                        status=DienstplanStatus.GEPLANT
+                    )
+                    db.session.add(dp)
+                    eintraege += 1
 
             try:
                 db.session.commit()
@@ -282,7 +352,9 @@ class DienstPlaner:
                 'eintraege': eintraege,
                 'fehler': None,
                 'warnungen': warnungen,
-                'diagnose': diagnose
+                'diagnose': diagnose,
+                'validierungen': validierungen,
+                'objective_breakdown': objective_breakdown
             }
         else:
             # INFEASIBLE - try best-possible mode
@@ -299,6 +371,100 @@ class DienstPlaner:
                     'warnungen': [],
                     'diagnose': diagnose
                 }
+
+    def _validiere_loesung(self, zuweisungen, mitarbeiter, dienste, tage, jahr, monat, wuensche, regeln=None):
+        """Validiert die extrahierte Lösung auf Constraint-Verletzungen.
+
+        Verwendet die tatsächlich konfigurierten Regelwerte statt Hardcodes.
+        """
+        violations = []
+        dienst_map = {d.id: d for d in dienste}
+        ma_map = {m.id: m for m in mitarbeiter}
+
+        # Regelwerte extrahieren (mit gesetzlichen Defaults)
+        min_ruhezeit_stunden = 11
+        max_folgetage = 6
+        if regeln:
+            for r in regeln:
+                if r.typ == RegelTyp.MIN_RUHEZEIT:
+                    min_ruhezeit_stunden = r.parameter.get('stunden', 11)
+                elif r.typ == RegelTyp.MAX_TAGE_FOLGE:
+                    max_folgetage = r.parameter.get('max', 5)
+
+        # 1. Max 1 Schicht pro Tag pro MA
+        for (ma_id, tag), dienst_ids in zuweisungen.items():
+            if len(dienst_ids) > 1:
+                violations.append(
+                    f'MA {ma_id} Tag {tag}: {len(dienst_ids)} Schichten zugewiesen (max 1)'
+                )
+
+        # 2. NICHT_VERFUEGBAR verletzt?
+        for (ma_id, tag), dienst_ids in zuweisungen.items():
+            if (ma_id, tag) in wuensche:
+                for w in wuensche[(ma_id, tag)]:
+                    if w.wunsch_typ == WunschTyp.NICHT_VERFUEGBAR and dienst_ids:
+                        violations.append(
+                            f'MA {ma_id} Tag {tag}: Arbeitet trotz NICHT_VERFUEGBAR'
+                        )
+
+        # 3. Min-Besetzung pro Schicht/Tag
+        for d in dienste:
+            if d.min_besetzung:
+                for tag in tage:
+                    count = sum(
+                        1 for (ma_id, t), d_ids in zuweisungen.items()
+                        if t == tag and d.id in d_ids
+                    )
+                    if count < d.min_besetzung:
+                        violations.append(
+                            f'Dienst {d.name} Tag {tag}: Besetzung {count} < min {d.min_besetzung}'
+                        )
+
+        # 4. Ruhezeit zwischen Schichten (konfigurierter Wert)
+        for m in mitarbeiter:
+            for tag in tage[:-1]:
+                naechster_tag = tag + 1
+                if (m.id, tag) not in zuweisungen or (m.id, naechster_tag) not in zuweisungen:
+                    continue
+                for d1_id in zuweisungen[(m.id, tag)]:
+                    for d2_id in zuweisungen[(m.id, naechster_tag)]:
+                        d1 = dienst_map.get(d1_id)
+                        d2 = dienst_map.get(d2_id)
+                        if not d1 or not d2:
+                            continue
+                        ende = datetime.combine(date(jahr, monat, tag), d1.ende_zeit)
+                        if d1.ende_zeit <= d1.start_zeit:
+                            ende = datetime.combine(date(jahr, monat, naechster_tag), d1.ende_zeit)
+                        start = datetime.combine(date(jahr, monat, naechster_tag), d2.start_zeit)
+                        ruhezeit = (start - ende).total_seconds() / 3600
+                        if ruhezeit < min_ruhezeit_stunden:
+                            violations.append(
+                                f'MA {m.id} Tag {tag}->{naechster_tag}: '
+                                f'Ruhezeit {ruhezeit:.1f}h < {min_ruhezeit_stunden}h ({d1.name} -> {d2.name})'
+                            )
+
+        # 5. Max aufeinanderfolgende Arbeitstage (konfigurierter Wert + individuelle Overrides)
+        for m in mitarbeiter:
+            ma_max_folge = m.get_regel_wert('MAX_TAGE_FOLGE', max_folgetage)
+            # Starte mit Vormonat-Arbeitstagen
+            consecutive = 0
+            if self.vormonat_dienste:
+                for offset in range(0, -8, -1):  # 0, -1, -2, ..., -7
+                    if (m.id, offset) in self.vormonat_dienste:
+                        consecutive += 1
+                    else:
+                        break
+            for tag in tage:
+                if (m.id, tag) in zuweisungen and zuweisungen[(m.id, tag)]:
+                    consecutive += 1
+                    if consecutive > ma_max_folge:
+                        violations.append(
+                            f'MA {m.id} Tag {tag}: {consecutive} aufeinanderfolgende Arbeitstage (max {ma_max_folge})'
+                        )
+                else:
+                    consecutive = 0
+
+        return violations
 
     def _diagnose_probleme(self, mitarbeiter, dienste, tage, bestehende):
         """Analysiert potenzielle Probleme vor dem Lösen"""
@@ -352,6 +518,77 @@ class DienstPlaner:
 
         return probleme
 
+    def _lade_vormonat(self, jahr, monat):
+        """Lädt die letzten Tage des Vormonats für monatsübergreifende Constraints"""
+        if monat == 1:
+            vm_jahr, vm_monat = jahr - 1, 12
+        else:
+            vm_jahr, vm_monat = jahr, monat - 1
+
+        _, vm_num_days = monthrange(vm_jahr, vm_monat)
+
+        # Lade letzte 7 Tage des Vormonats
+        lookback = 7
+        start_tag = max(1, vm_num_days - lookback + 1)
+        start_datum = date(vm_jahr, vm_monat, start_tag)
+        ende_datum = date(vm_jahr, vm_monat, vm_num_days)
+
+        vormonat_eintraege = Dienstplan.query.filter(
+            Dienstplan.datum >= start_datum,
+            Dienstplan.datum <= ende_datum
+        ).all()
+
+        # Speichere als (ma_id, tag_offset) -> dienst_id
+        # tag_offset: 0 = letzter Tag Vormonat, -1 = vorletzter, etc.
+        self.vormonat_dienste = {}
+        for dp in vormonat_eintraege:
+            tag_offset = dp.datum.day - vm_num_days  # Tag 31 von 31 -> 0, Tag 30 -> -1
+            self.vormonat_dienste[(dp.mitarbeiter_id, tag_offset)] = dp.dienst_id
+
+        self.vormonat_jahr = vm_jahr
+        self.vormonat_monat = vm_monat
+        self.vormonat_letzter_tag = vm_num_days
+
+        logger.info(f"Vormonat {vm_monat:02d}/{vm_jahr}: {len(vormonat_eintraege)} Einträge für Cross-Month-Constraints")
+
+    def _erstelle_arbeitstag_vars(self, mitarbeiter, dienste, tage, bestehende):
+        """Erstellt wiederverwendbare has_shift BoolVars für jeden MA/Tag.
+
+        Enthält auch fixierte Variablen für Vormonat-Tage (Cross-Month).
+        Vermeidet redundante Variable-Erzeugung in Constraint-Methoden.
+        """
+        self.has_shift_vars = {}
+
+        # Aktuelle Monatstage
+        for m in mitarbeiter:
+            for tag in tage:
+                if (m.id, tag) in bestehende:
+                    # Bereits zugewiesen = arbeitet
+                    has_shift = self.model.NewBoolVar(f'has_shift_m{m.id}_t{tag}')
+                    self.model.Add(has_shift == 1)
+                    self.has_shift_vars[(m.id, tag)] = has_shift
+                    continue
+
+                day_shifts = [
+                    self.shifts[(m.id, tag, d.id)]
+                    for d in dienste
+                    if (m.id, tag, d.id) in self.shifts
+                ]
+                if day_shifts:
+                    has_shift = self.model.NewBoolVar(f'has_shift_m{m.id}_t{tag}')
+                    self.model.Add(sum(day_shifts) >= 1).OnlyEnforceIf(has_shift)
+                    self.model.Add(sum(day_shifts) == 0).OnlyEnforceIf(has_shift.Not())
+                    self.has_shift_vars[(m.id, tag)] = has_shift
+
+        # Vormonat-Tage (fixiert auf 1 wo gearbeitet wurde)
+        for (ma_id, tag_offset), dienst_id in self.vormonat_dienste.items():
+            fixed_var = self.model.NewBoolVar(f'vm_has_shift_m{ma_id}_t{tag_offset}')
+            self.model.Add(fixed_var == 1)
+            self.has_shift_vars[(ma_id, tag_offset)] = fixed_var
+
+        logger.debug(f"Arbeitstag-Vars erstellt: {len(self.has_shift_vars)} "
+                     f"(davon {len(self.vormonat_dienste)} Vormonat)")
+
     def _generiere_best_possible(self, jahr, monat, mitarbeiter, dienste, tage, bestehende, wuensche, diagnose):
         """Generiert beste mögliche Lösung ohne harte Besetzungs-Constraints"""
         logger.info("Erstelle Teillösung mit gelockerten Constraints...")
@@ -371,6 +608,9 @@ class DienstPlaner:
                 for d in dienste:
                     var_name = f'shift_m{m.id}_t{tag}_d{d.id}'
                     self.shifts[(m.id, tag, d.id)] = self.model.NewBoolVar(var_name)
+
+        # Arbeitstag-Vars neu erstellen für das relaxierte Modell (inkl. Vormonat)
+        self._erstelle_arbeitstag_vars(mitarbeiter, dienste, tage, bestehende)
 
         # Constraint 1: Each employee works at most one shift per day (keep this hard)
         for m in mitarbeiter:
@@ -450,7 +690,7 @@ class DienstPlaner:
                     objective_terms.append(100 * capped)
 
         # Fair distribution based on Stellenanteil (arbeitsstunden_woche)
-        VOLLZEIT_STUNDEN = 38.5
+        VOLLZEIT_STUNDEN = self.vollzeit_stunden
         VOLLZEIT_TAGE_MONAT = 18  # ~18 Arbeitstage bei Vollzeit
 
         for m in mitarbeiter:
@@ -494,10 +734,10 @@ class DienstPlaner:
                         if w.wunsch_typ == WunschTyp.FREI:
                             for d in dienste:
                                 if (m.id, tag, d.id) in self.shifts:
-                                    objective_terms.append(-10 * self.shifts[(m.id, tag, d.id)])
+                                    objective_terms.append(-50 * self.shifts[(m.id, tag, d.id)])
                         elif w.wunsch_typ == WunschTyp.DIENST_WUNSCH and w.dienst_id:
                             if (m.id, tag, w.dienst_id) in self.shifts:
-                                objective_terms.append(5 * self.shifts[(m.id, tag, w.dienst_id)])
+                                objective_terms.append(20 * self.shifts[(m.id, tag, w.dienst_id)])
 
         # Soft-Constraint-Penalties hinzufügen (Qualifikationen etc.)
         objective_terms.extend(self.soft_penalties)
@@ -513,7 +753,10 @@ class DienstPlaner:
         logger.info(f"Solver (relaxed) beendet mit Status: {self.solver.StatusName(status)}")
 
         if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-            eintraege = 0
+            logger.info(f"Objective-Wert (relaxed): {self.solver.ObjectiveValue():.0f}")
+
+            # Extract solution into dict for validation
+            zuweisungen = {}
             for m in mitarbeiter:
                 for tag in tage:
                     if (m.id, tag) in bestehende:
@@ -521,14 +764,48 @@ class DienstPlaner:
                     for d in dienste:
                         if (m.id, tag, d.id) in self.shifts:
                             if self.solver.Value(self.shifts[(m.id, tag, d.id)]) == 1:
-                                dp = Dienstplan(
-                                    datum=date(jahr, monat, tag),
-                                    mitarbeiter_id=m.id,
-                                    dienst_id=d.id,
-                                    status=DienstplanStatus.GEPLANT
-                                )
-                                db.session.add(dp)
-                                eintraege += 1
+                                zuweisungen.setdefault((m.id, tag), []).append(d.id)
+
+            # Post-solve validation
+            regeln = Regel.query.filter_by(aktiv=True).all()
+            validierungen = self._validiere_loesung(zuweisungen, mitarbeiter, dienste, tage, jahr, monat, wuensche, regeln)
+            for v in validierungen:
+                logger.warning(f"Post-Solve-Validierung (relaxed): {v}")
+
+            # Objective breakdown
+            total_schichten = sum(len(d_ids) for d_ids in zuweisungen.values())
+            frei_verletzt = 0
+            wunsch_erfuellt = 0
+            for (ma_id, tag), d_ids in zuweisungen.items():
+                if (ma_id, tag) in wuensche:
+                    for w in wuensche[(ma_id, tag)]:
+                        if w.wunsch_typ == WunschTyp.FREI and d_ids:
+                            frei_verletzt += 1
+                        elif w.wunsch_typ == WunschTyp.DIENST_WUNSCH and w.dienst_id in d_ids:
+                            wunsch_erfuellt += 1
+            objective_breakdown = {
+                'total_schichten': total_schichten,
+                'objective_wert': self.solver.ObjectiveValue(),
+                'solver_status': self.solver.StatusName(status),
+                'frei_wuensche_verletzt': frei_verletzt,
+                'dienst_wuensche_erfuellt': wunsch_erfuellt,
+                'validierungsfehler': len(validierungen),
+                'teilweise': True,
+            }
+            logger.info(f"Objective-Breakdown (relaxed): {objective_breakdown}")
+
+            # Write to database
+            eintraege = 0
+            for (ma_id, tag), dienst_ids in zuweisungen.items():
+                for d_id in dienst_ids:
+                    dp = Dienstplan(
+                        datum=date(jahr, monat, tag),
+                        mitarbeiter_id=ma_id,
+                        dienst_id=d_id,
+                        status=DienstplanStatus.GEPLANT
+                    )
+                    db.session.add(dp)
+                    eintraege += 1
 
             try:
                 db.session.commit()
@@ -556,7 +833,9 @@ class DienstPlaner:
                 'eintraege': eintraege,
                 'fehler': None,
                 'warnungen': warnungen,
-                'diagnose': diagnose
+                'diagnose': diagnose,
+                'validierungen': validierungen,
+                'objective_breakdown': objective_breakdown
             }
         else:
             logger.error("Auch Teillösung nicht möglich")
@@ -717,60 +996,88 @@ class DienstPlaner:
                     self.model.Add(sum(stunden_vars) <= max_stunden * 10)
 
     def _constraint_max_tage_folge(self, mitarbeiter, dienste, tage, max_tage):
-        """Maximal X aufeinanderfolgende Arbeitstage (mit individuellem Override)"""
+        """Maximal X aufeinanderfolgende Arbeitstage (mit individuellem Override).
+
+        Nutzt vorberechnete has_shift_vars (inkl. Vormonat für Cross-Month).
+        """
         for m in mitarbeiter:
-            # Individuelle Überschreibung prüfen
             ma_max_tage = m.get_regel_wert('MAX_TAGE_FOLGE', max_tage)
 
-            for start_tag in range(1, len(tage) - ma_max_tage + 1):
-                # If all days from start_tag to start_tag + ma_max_tage have a shift,
-                # at least one must be 0
+            # Erweiterte Startposition: zurück in Vormonat für monatsübergreifende Fenster
+            min_start = 1 - ma_max_tage  # z.B. -4 bei max_tage=5
+            max_start = tage[-1] - ma_max_tage  # Letzter gültiger Fenster-Start
+
+            for start_tag in range(min_start, max_start + 1):
                 consecutive_shifts = []
                 for offset in range(ma_max_tage + 1):
                     tag = start_tag + offset
-                    if tag > len(tage):
-                        break
-                    day_shifts = [
-                        self.shifts[(m.id, tag, d.id)]
-                        for d in dienste
-                        if (m.id, tag, d.id) in self.shifts
-                    ]
-                    if day_shifts:
-                        # At least one shift this day
-                        has_shift = self.model.NewBoolVar(f'has_shift_m{m.id}_t{tag}')
-                        self.model.Add(sum(day_shifts) >= 1).OnlyEnforceIf(has_shift)
-                        self.model.Add(sum(day_shifts) == 0).OnlyEnforceIf(has_shift.Not())
-                        consecutive_shifts.append(has_shift)
+                    if (m.id, tag) in self.has_shift_vars:
+                        consecutive_shifts.append(self.has_shift_vars[(m.id, tag)])
 
                 if len(consecutive_shifts) > ma_max_tage:
-                    # At least one of these days must be free
                     self.model.Add(sum(consecutive_shifts) <= ma_max_tage)
 
     def _constraint_min_ruhezeit(self, mitarbeiter, dienste, tage, jahr, monat, min_stunden):
-        """Mindest-Ruhezeit zwischen Diensten"""
-        # Find night shifts (ending after 22:00 or before 06:00)
-        nacht_dienste = [d for d in dienste if d.ende_zeit.hour <= 6 or d.ende_zeit.hour >= 22]
-        frueh_dienste = [d for d in dienste if d.start_zeit.hour < 10]
+        """Mindest-Ruhezeit zwischen Diensten - prüft ALLE Dienstpaare.
 
+        Berücksichtigt auch den letzten Dienst des Vormonats (Cross-Month).
+        """
+        dienst_map = {d.id: d for d in dienste}
+
+        # Cross-Month: Ruhezeit vom letzten Vormonatstag zu Tag 1
+        if self.vormonat_dienste and self.vormonat_letzter_tag:
+            for m in mitarbeiter:
+                if (m.id, 0) not in self.vormonat_dienste:
+                    continue  # Hat am letzten VM-Tag nicht gearbeitet
+
+                d1_id = self.vormonat_dienste[(m.id, 0)]
+                d1 = dienst_map.get(d1_id)
+                if not d1:
+                    continue
+
+                vm_last_date = date(self.vormonat_jahr, self.vormonat_monat, self.vormonat_letzter_tag)
+                first_date = date(jahr, monat, 1)
+
+                for d2 in dienste:
+                    if (m.id, 1, d2.id) not in self.shifts:
+                        continue
+
+                    ende = datetime.combine(vm_last_date, d1.ende_zeit)
+                    if d1.ende_zeit <= d1.start_zeit:
+                        # Nachtdienst: endet am nächsten Tag (= 1. des aktuellen Monats)
+                        ende = datetime.combine(first_date, d1.ende_zeit)
+
+                    start = datetime.combine(first_date, d2.start_zeit)
+                    ruhezeit = (start - ende).total_seconds() / 3600
+
+                    if ruhezeit < min_stunden:
+                        # Fixierter Vormonat-Dienst -> harter Ausschluss
+                        self.model.Add(self.shifts[(m.id, 1, d2.id)] == 0)
+
+        # Innerhalb des Monats: alle Dienstpaare prüfen
         for m in mitarbeiter:
             for tag in tage[:-1]:  # All days except last
                 naechster_tag = tag + 1
-                for nd in nacht_dienste:
-                    for fd in frueh_dienste:
-                        # Calculate rest time
-                        ende = datetime.combine(date(jahr, monat, tag), nd.ende_zeit)
-                        if nd.ende_zeit.hour <= 6:
-                            ende = datetime.combine(date(jahr, monat, naechster_tag), nd.ende_zeit)
+                for d1 in dienste:
+                    if (m.id, tag, d1.id) not in self.shifts:
+                        continue
+                    for d2 in dienste:
+                        if (m.id, naechster_tag, d2.id) not in self.shifts:
+                            continue
 
-                        start = datetime.combine(date(jahr, monat, naechster_tag), fd.start_zeit)
+                        # Calculate actual rest time between d1 ending and d2 starting
+                        ende = datetime.combine(date(jahr, monat, tag), d1.ende_zeit)
+                        # If shift ends after midnight (e.g. 02:00), end is next day
+                        if d1.ende_zeit <= d1.start_zeit:
+                            ende = datetime.combine(date(jahr, monat, naechster_tag), d1.ende_zeit)
+
+                        start = datetime.combine(date(jahr, monat, naechster_tag), d2.start_zeit)
                         ruhezeit = (start - ende).total_seconds() / 3600
 
                         if ruhezeit < min_stunden:
-                            # Can't have night shift followed by early shift
-                            if (m.id, tag, nd.id) in self.shifts and (m.id, naechster_tag, fd.id) in self.shifts:
-                                self.model.Add(
-                                    self.shifts[(m.id, tag, nd.id)] +
-                                    self.shifts[(m.id, naechster_tag, fd.id)] <= 1
+                            self.model.Add(
+                                self.shifts[(m.id, tag, d1.id)] +
+                                self.shifts[(m.id, naechster_tag, d2.id)] <= 1
                                 )
 
     def _constraint_min_personal(self, mitarbeiter, tage, dienst_id, min_personal, bestehende):
@@ -970,8 +1277,8 @@ class DienstPlaner:
                             )
                             self.model.Add(qual_capped <= sum(qual_shift_vars))
 
-                            # Sehr hoher Bonus (+500) pro erfüllter Qualifikations-Position
-                            self.soft_penalties.append(500 * qual_capped)
+                            # Hoher Bonus pro erfüllter Qualifikations-Position
+                            self.soft_penalties.append(200 * qual_capped)
 
     def _apply_besetzung_constraints(self, mitarbeiter, dienste, tage, bestehende):
         """Wendet Min/Max-Besetzung aus Dienst-Model an"""
@@ -1030,13 +1337,24 @@ class DienstPlaner:
 
                 # If block starts, ensure minimum consecutive days (for hard/soft rules)
                 if prioritaet <= 2:  # Hard or soft
+                    # Check if enough days remain for min_folge
+                    can_complete_block = True
                     for offset in range(1, min_folge):
                         next_tag = start_tag + offset
-                        if next_tag in tage and (m.id, next_tag, dienst_id) in self.shifts:
+                        if next_tag not in tage or (m.id, next_tag, dienst_id) not in self.shifts:
+                            can_complete_block = False
+                            break
+
+                    if can_complete_block:
+                        for offset in range(1, min_folge):
+                            next_tag = start_tag + offset
                             # If block starts at start_tag, must work next_tag too
                             self.model.Add(
                                 self.shifts[(m.id, next_tag, dienst_id)] >= is_block_start
                             )
+                    else:
+                        # Not enough days to complete min_folge block - prevent block start here
+                        self.model.Add(is_block_start == 0)
 
                 # Max block length: after max_folge days, must have a break
                 if prioritaet <= 2 and max_folge:
@@ -1113,13 +1431,28 @@ class DienstPlaner:
 
                 # Case 1: End of month or no variable for tomorrow
                 if next_tag not in tage or (m.id, next_tag, dienst_id) not in self.shifts:
-                    # If works today, enforce free days
-                    for offset in range(1, min_frei + 1):
-                        frei_tag = tag + offset
-                        if frei_tag in tage:
+                    # Check if all required free days fall within this month
+                    all_frei_in_month = all(
+                        tag + offset in tage
+                        for offset in range(1, min_frei + 1)
+                    )
+                    if all_frei_in_month:
+                        # If works today, enforce free days
+                        for offset in range(1, min_frei + 1):
+                            frei_tag = tag + offset
                             for d in dienste:
                                 if (m.id, frei_tag, d.id) in self.shifts:
                                     self.model.Add(works_today + self.shifts[(m.id, frei_tag, d.id)] <= 1)
+                    else:
+                        # Not enough days remaining - prevent block from ending here
+                        # Block can only end if followed by min_frei free days
+                        self.model.Add(works_today == 0)
+                        self.diagnose_info.append({
+                            'typ': 'BLOCK_MONATSENDE',
+                            'schwere': 'info',
+                            'nachricht': f'MA {m.id}: Blockdienst {dienst_id} an Tag {tag} '
+                                        f'verhindert - nicht genug freie Tage bis Monatsende'
+                        })
                     continue
 
                 # Case 2: Both today and tomorrow variables exist
@@ -1130,6 +1463,12 @@ class DienstPlaner:
                 # This is: works_today=1 AND works_tomorrow=0 => no work on frei_tag
                 # Equivalent to: works_today + (1-works_tomorrow) + frei_tag_shift <= 2
                 # Which is: works_today - works_tomorrow + frei_tag_shift <= 1
+
+                # Check if all required free days fall within this month
+                all_frei_in_month = all(
+                    tag + offset in tage
+                    for offset in range(1, min_frei + 1)
+                )
 
                 for offset in range(1, min_frei + 1):
                     frei_tag = tag + offset
@@ -1143,6 +1482,12 @@ class DienstPlaner:
                                 self.model.Add(
                                     works_today - works_tomorrow + self.shifts[(m.id, frei_tag, d.id)] <= 1
                                 )
+
+                # If free days extend beyond month: prevent block from ending here
+                if not all_frei_in_month:
+                    # Block must NOT end at this day (must continue to next day or not work)
+                    # works_today=1 AND works_tomorrow=0 is forbidden
+                    self.model.Add(works_today <= works_tomorrow)
 
     def _constraint_kein_wochenende(self, tage, jahr, monat, dienst_id):
         """Verhindert einen Dienst am Wochenende (Samstag/Sonntag)"""
@@ -1255,7 +1600,7 @@ class DienstPlaner:
         Der Wert wird proportional zum Stellenanteil angepasst.
         Als Soft-Constraint implementiert, da nicht jeder Nächte machen kann/will.
         """
-        VOLLZEIT_STUNDEN = 38.5
+        VOLLZEIT_STUNDEN = self.vollzeit_stunden
 
         for m in mitarbeiter:
             # Individuelle Überschreibung prüfen (0 = befreit von Nachtpflicht)
@@ -1287,15 +1632,15 @@ class DienstPlaner:
                 # Erstelle capped variable: min(zugewiesene_naechte, min_naechte)
                 nacht_capped = self.model.NewIntVar(0, min_naechte, f'nacht_min_m{m.id}')
                 self.model.Add(nacht_capped <= sum(nacht_vars))
-                # Hoher Bonus (+300) pro erfüllter Nacht bis zum Minimum
-                self.soft_penalties.append(300 * nacht_capped)
+                # Bonus pro erfüllter Nacht bis zum Minimum (< Coverage-Gewicht)
+                self.soft_penalties.append(30 * nacht_capped)
 
     def _constraint_min_wochenenden_monat(self, mitarbeiter, dienste, tage, jahr, monat, min_we_vollzeit, prioritaet):
         """Mindestanzahl Wochenenden pro Mitarbeiter für faire Verteilung.
 
         Der Wert wird proportional zum Stellenanteil angepasst.
         """
-        VOLLZEIT_STUNDEN = 38.5
+        VOLLZEIT_STUNDEN = self.vollzeit_stunden
 
         # Identifiziere Wochenend-Tage und gruppiere nach Wochenende
         wochenenden = []
@@ -1351,8 +1696,8 @@ class DienstPlaner:
                 # Weich: Bonus für Erfüllung des Minimums
                 we_capped = self.model.NewIntVar(0, min_we, f'we_min_m{m.id}')
                 self.model.Add(we_capped <= sum(we_worked_vars))
-                # Hoher Bonus (+400) pro erfülltem Wochenende bis zum Minimum
-                self.soft_penalties.append(400 * we_capped)
+                # Bonus pro erfülltem Wochenende bis zum Minimum (< Coverage-Gewicht)
+                self.soft_penalties.append(40 * we_capped)
 
     def _apply_mitarbeiter_einschraenkungen(self, mitarbeiter, dienste, tage, jahr, monat):
         """Wendet Mitarbeiter-spezifische Dienst-Einschränkungen an.

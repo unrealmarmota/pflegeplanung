@@ -115,6 +115,12 @@
                class="btn btn-primary">
                 <i class="bi bi-magic"></i> Automatisch planen
             </a>
+            {% if ki_verfuegbar %}
+            <button type="button" class="btn btn-outline-info"
+                    onclick="requestErklaerung('plan', {{ jahr }}, {{ monat }})">
+                <i class="bi bi-lightbulb"></i> KI-Analyse
+            </button>
+            {% endif %}
             <a href="{{ url_for('planung.api_export', format='pdf', jahr=jahr, monat=monat) }}"
                class="btn btn-outline-secondary">
                 <i class="bi bi-file-pdf"></i> PDF
@@ -310,6 +316,10 @@
         </div>
     </div>
 </div>
+
+{% if ki_verfuegbar %}
+{% include "planung/_erklaerung_modal.html" %}
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}

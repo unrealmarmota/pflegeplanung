@@ -13,6 +13,9 @@ class Einstellungen(db.Model):
     # Standardwerte
     DEFAULTS = {
         'basis_wochenstunden': ('38.5', 'Basis-Wochenarbeitszeit in Stunden'),
+        'claude_api_key': ('', 'Claude API-Key für KI-Erklärungen'),
+        'claude_modell': ('haiku', 'Claude-Modell (haiku/sonnet/opus)'),
+        'ki_erklaerung_aktiv': ('true', 'KI-Erklärungen aktiviert'),
     }
 
     @classmethod
