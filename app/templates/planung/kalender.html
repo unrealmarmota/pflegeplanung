@@ -129,6 +129,10 @@
                class="btn btn-outline-secondary">
                 <i class="bi bi-file-excel"></i> Excel
             </a>
+            <button type="button" class="btn btn-outline-danger"
+                    onclick="resetMonat({{ jahr }}, {{ monat }})">
+                <i class="bi bi-trash"></i> Monat leeren
+            </button>
         </div>
     </div>
 </div>
@@ -485,5 +489,27 @@
             console.error('Fehler beim Laden der Ausschlüsse:', error);
         }
     };
+
+    async function resetMonat(jahr, monat) {
+        const monatName = new Date(jahr, monat - 1, 1).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
+        if (!confirm(`Alle Dienstplan-Einträge für ${monatName} wirklich löschen?\n\nDieser Vorgang kann nicht rückgängig gemacht werden.`)) {
+            return;
+        }
+        try {
+            const resp = await fetch('/planung/api/reset-monat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jahr, monat })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        } catch (e) {
+            alert('Netzwerkfehler beim Löschen');
+        }
+    }
 </script>
 {% endblock %}

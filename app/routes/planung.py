@@ -198,6 +198,34 @@ def kalender():
                            ki_verfuegbar=ki.ist_verfuegbar())
 
 
+@bp.route('/api/reset-monat', methods=['POST'])
+def api_reset_monat():
+    """Löscht alle Dienstplan-Einträge für einen Monat"""
+    data = request.get_json()
+    jahr = data.get('jahr')
+    monat = data.get('monat')
+
+    if not jahr or not monat:
+        return jsonify({'error': 'Jahr und Monat sind erforderlich'}), 400
+
+    try:
+        start_datum = date(int(jahr), int(monat), 1)
+        num_days = calendar.monthrange(int(jahr), int(monat))[1]
+        ende_datum = date(int(jahr), int(monat), num_days)
+
+        deleted = Dienstplan.query.filter(
+            Dienstplan.datum >= start_datum,
+            Dienstplan.datum <= ende_datum
+        ).delete()
+        db.session.commit()
+
+        return jsonify({'success': True, 'geloescht': deleted})
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Fehler beim Reset: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/api/eintrag', methods=['POST'])
 def api_eintrag():
     """Create or update a schedule entry"""
