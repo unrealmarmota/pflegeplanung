@@ -390,6 +390,22 @@ REGEL_AUSNAHMEN_INFO = {
         'typ': 'int',
         'min': 0,
         'max': 5
+    },
+    'NACHT_BLOCK_MIN': {
+        'name': 'Min. Nächte am Stück',
+        'beschreibung': 'Mindestanzahl aufeinanderfolgender Nächte pro Block',
+        'default': 2,
+        'typ': 'int',
+        'min': 1,
+        'max': 7
+    },
+    'NACHT_BLOCK_MAX': {
+        'name': 'Max. Nächte am Stück',
+        'beschreibung': 'Maximale aufeinanderfolgende Nächte pro Block',
+        'default': 4,
+        'typ': 'int',
+        'min': 1,
+        'max': 7
     }
 }
 

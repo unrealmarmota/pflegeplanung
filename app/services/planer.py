@@ -1311,6 +1311,8 @@ class DienstPlaner:
     def _constraint_dienst_block(self, mitarbeiter, tage, dienst_id, min_folge, max_folge, prioritaet):
         """Dienst nur als Block (z.B. Nächte nur als 2-4er Block)"""
         for m in mitarbeiter:
+            ma_min_folge = m.get_regel_wert('NACHT_BLOCK_MIN', min_folge)
+            ma_max_folge = m.get_regel_wert('NACHT_BLOCK_MAX', max_folge)
             for start_tag in tage:
                 if (m.id, start_tag, dienst_id) not in self.shifts:
                     continue
@@ -1337,28 +1339,28 @@ class DienstPlaner:
 
                 # If block starts, ensure minimum consecutive days (for hard/soft rules)
                 if prioritaet <= 2:  # Hard or soft
-                    # Check if enough days remain for min_folge
+                    # Check if enough days remain for ma_min_folge
                     can_complete_block = True
-                    for offset in range(1, min_folge):
+                    for offset in range(1, ma_min_folge):
                         next_tag = start_tag + offset
                         if next_tag not in tage or (m.id, next_tag, dienst_id) not in self.shifts:
                             can_complete_block = False
                             break
 
                     if can_complete_block:
-                        for offset in range(1, min_folge):
+                        for offset in range(1, ma_min_folge):
                             next_tag = start_tag + offset
                             # If block starts at start_tag, must work next_tag too
                             self.model.Add(
                                 self.shifts[(m.id, next_tag, dienst_id)] >= is_block_start
                             )
                     else:
-                        # Not enough days to complete min_folge block - prevent block start here
+                        # Not enough days to complete ma_min_folge block - prevent block start here
                         self.model.Add(is_block_start == 0)
 
-                # Max block length: after max_folge days, must have a break
-                if prioritaet <= 2 and max_folge:
-                    break_tag = start_tag + max_folge
+                # Max block length: after ma_max_folge days, must have a break
+                if prioritaet <= 2 and ma_max_folge:
+                    break_tag = start_tag + ma_max_folge
                     if break_tag in tage and (m.id, break_tag, dienst_id) in self.shifts:
                         # If block started at start_tag, must NOT work on break_tag
                         self.model.Add(
